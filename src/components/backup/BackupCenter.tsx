@@ -412,28 +412,40 @@ export function BackupCenter({
               <p className="text-sm font-semibold text-[var(--ink)]">
                 Google Drive
               </p>
-              <p className="mt-0.5 text-sm text-[var(--muted)]">
+              <p className="mt-0.5 text-sm">
                 {driveReady ? (
                   <span className="font-semibold text-emerald-700">
                     ✓ Connected
                     {driveEmail ? ` · ${driveEmail}` : ""}
                   </span>
-                ) : driveConfigured ? (
-                  <span>Not connected</span>
                 ) : (
-                  <span>Not configured on server</span>
+                  <span className="font-semibold text-[var(--muted)]">
+                    ○ Not Connected
+                  </span>
                 )}
               </p>
             </div>
-            {driveConfigured && !driveConnected && (
+            {!driveConnected && (
               <a
-                href="/api/backup/drive/connect"
+                href={
+                  driveConfigured
+                    ? "/api/backup/drive/connect"
+                    : "#google-drive-setup"
+                }
+                onClick={(e) => {
+                  if (!driveConfigured) {
+                    e.preventDefault();
+                    setError(
+                      "Google Drive is not configured yet. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI on the server, then try Connect again."
+                    );
+                  }
+                }}
                 className={`inline-flex ${secondaryBtn} items-center justify-center`}
               >
                 Connect Google Drive
               </a>
             )}
-            {canFullBackup && (
+            {driveConnected && canFullBackup && (
               <button
                 type="button"
                 disabled={pending || !driveReady}
@@ -442,6 +454,14 @@ export function BackupCenter({
               >
                 Backup Now to Google Drive
               </button>
+            )}
+            {driveConnected && driveConfigured && (
+              <a
+                href="/api/backup/drive/connect"
+                className="block text-center text-sm font-semibold text-[var(--accent)]"
+              >
+                Reconnect Google Drive
+              </a>
             )}
           </div>
         )}
@@ -643,15 +663,6 @@ export function BackupCenter({
                 </button>
               </div>
             </form>
-          )}
-
-          {isOwner && driveConfigured && driveConnected && (
-            <a
-              href="/api/backup/drive/connect"
-              className="inline-block text-sm font-semibold text-[var(--accent)]"
-            >
-              Reconnect Google Drive
-            </a>
           )}
 
           <div className="space-y-3">
