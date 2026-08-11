@@ -51,15 +51,31 @@ export async function getOwnerInterventionList(
     const salesman = (assignments || []).find(
       (a) => a.party_id === row.party_id && a.product_id === row.product_id
     );
-    const salesmanName = Array.isArray(salesman?.salesman)
-      ? salesman?.salesman[0]?.name
-      : (salesman?.salesman as { name?: string } | null)?.name || null;
-    const productName = Array.isArray(row.product)
-      ? row.product[0]?.product_name
-      : row.product?.product_name;
-    const partyName = Array.isArray(row.party)
-      ? row.party[0]?.party_name
-      : row.party?.party_name || "Party";
+    const salesmanRel = salesman?.salesman as
+      | { name?: string }
+      | { name?: string }[]
+      | null
+      | undefined;
+    const salesmanName = Array.isArray(salesmanRel)
+      ? salesmanRel[0]?.name || null
+      : salesmanRel?.name || null;
+    const productRel = row.product as
+      | { product_name?: string }
+      | { product_name?: string }[]
+      | null
+      | undefined;
+    const partyRel = row.party as
+      | { party_name?: string }
+      | { party_name?: string }[]
+      | null
+      | undefined;
+    const productName = Array.isArray(productRel)
+      ? productRel[0]?.product_name
+      : productRel?.product_name;
+    const partyName =
+      (Array.isArray(partyRel)
+        ? partyRel[0]?.party_name
+        : partyRel?.party_name) || "Party";
 
     if (
       Number(row.total_visits) >= highVisits &&

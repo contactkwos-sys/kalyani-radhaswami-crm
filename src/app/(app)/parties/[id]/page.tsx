@@ -113,10 +113,13 @@ export default async function PartyDetailPage({
       samples: (samples || []).length,
       salesValue: (mySales || []).reduce((a, s) => a + Number(s.sales_value), 0),
       nextFollowup: followups?.[0]?.followup_date || null,
-      productStatuses: (pp || []) as Array<{
-        development_status: string;
-        product?: { product_name: string } | null;
-      }>,
+      productStatuses: (pp || []).map((row) => {
+        const product = Array.isArray(row.product) ? row.product[0] : row.product;
+        return {
+          development_status: String(row.development_status),
+          product: product ? { product_name: product.product_name as string } : null,
+        };
+      }),
       achievement: target > 0 ? (monthValue / target) * 100 : 0,
       target,
       estimatedIncentive: (incentives || [])
