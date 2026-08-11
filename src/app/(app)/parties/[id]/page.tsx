@@ -116,60 +116,40 @@ export default async function PartyDetailPage({
         >
           <h3 className="font-semibold">VIEW COMPLETE HISTORY</h3>
           <ul className="mt-3 space-y-3 text-sm">
-            {(visits || []).map(
-              (v: {
-                id: string;
-                visit_date: string;
-                start_at: string | null;
-                duration_seconds: number | null;
-                gps_verified: boolean;
-                status: string;
-                salesman?: { name: string } | null;
-                feedback?:
-                  | {
-                      person_met: string | null;
-                      sample_given: boolean;
-                      discussion: string | null;
-                    }
-                  | Array<{
-                      person_met: string | null;
-                      sample_given: boolean;
-                      discussion: string | null;
-                    }>
-                  | null;
-              }) => {
-                const fb = Array.isArray(v.feedback) ? v.feedback[0] : v.feedback;
-                return (
-                  <li
-                    key={v.id}
-                    className="border-b border-[var(--border)] pb-2 last:border-0"
+            {(visits || []).map((v) => {
+              const salesman = Array.isArray(v.salesman) ? v.salesman[0] : v.salesman;
+              const fbRaw = v.feedback;
+              const fb = Array.isArray(fbRaw) ? fbRaw[0] : fbRaw;
+              return (
+                <li
+                  key={v.id}
+                  className="border-b border-[var(--border)] pb-2 last:border-0"
+                >
+                  <Link
+                    href={`/visits/${v.id}`}
+                    className="font-medium text-[var(--accent)] hover:underline"
                   >
-                    <Link
-                      href={`/visits/${v.id}`}
-                      className="font-medium text-[var(--accent)] hover:underline"
-                    >
-                      {v.visit_date}
-                      {v.start_at
-                        ? ` · ${new Date(v.start_at).toLocaleTimeString()}`
-                        : ""}
-                    </Link>
-                    <p className="text-[var(--muted)]">
-                      {v.status}
-                      {v.gps_verified ? " · GPS Verified" : ""}
-                      {v.duration_seconds != null
-                        ? ` · ${Math.round(v.duration_seconds / 60)} minutes`
-                        : ""}
-                      {v.salesman ? ` · ${v.salesman.name}` : ""}
-                      {fb?.person_met ? ` · Met ${fb.person_met}` : ""}
-                      {fb?.sample_given ? " · Sample Given" : ""}
-                    </p>
-                    {fb?.discussion && (
-                      <p className="mt-1 text-[var(--ink)]">{fb.discussion}</p>
-                    )}
-                  </li>
-                );
-              }
-            )}
+                    {v.visit_date}
+                    {v.start_at
+                      ? ` · ${new Date(v.start_at).toLocaleTimeString()}`
+                      : ""}
+                  </Link>
+                  <p className="text-[var(--muted)]">
+                    {v.status}
+                    {v.gps_verified ? " · GPS Verified" : ""}
+                    {v.duration_seconds != null
+                      ? ` · ${Math.round(v.duration_seconds / 60)} minutes`
+                      : ""}
+                    {salesman?.name ? ` · ${salesman.name}` : ""}
+                    {fb?.person_met ? ` · Met ${fb.person_met}` : ""}
+                    {fb?.sample_given ? " · Sample Given" : ""}
+                  </p>
+                  {fb?.discussion && (
+                    <p className="mt-1 text-[var(--ink)]">{fb.discussion}</p>
+                  )}
+                </li>
+              );
+            })}
             {(visits || []).length === 0 && (
               <li className="text-[var(--muted)]">
                 No visits yet. History fills as GPS-verified visits are recorded.
