@@ -25,6 +25,7 @@ const NAV = [
   { href: "/settings/targets", label: "Targets", ownerAdmin: true },
   { href: "/settings/incentives", label: "Incentive rules", ownerAdmin: true },
   { href: "/settings/intelligence", label: "Intelligence", ownerAdmin: true },
+  { href: "/settings/backup", label: "Backup", ownerAdmin: true },
   { href: "/settings/company", label: "Company" },
   { href: "/settings/license", label: "License" },
   { href: "/settings/security", label: "Security", ownerOnly: true },

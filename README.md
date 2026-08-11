@@ -14,7 +14,8 @@ Built by Kumaresh Budhia · Support: contact.kwos@gmail.com · WhatsApp: [98250-
 
 - **Phase 1:** foundation, auth, companies, roles, trial/license, owner security, audit logs
 - **Phase 2:** Product / Salesman / Party masters + Party→Product→Salesman assignments
-- Phase 2+: masters, visits/GPS, sales, analytics (planned)
+- **Phase 3–5:** visits/GPS, sales/incentives, management intelligence
+- **Phase 6:** application Excel backup/restore, Google Drive sync, backup health (see `docs/BACKUP.md`)
 
 ## Setup
 
@@ -38,3 +39,4 @@ CRM tables are namespaced `crm_*` so they coexist with other apps on the shared 
 - `npm run typecheck` — TypeScript
 - `npm run db:migrate` — apply SQL migration via pooler
 - `npm run db:seed-owner` — create/update Owner auth user + CRM profile
+- `npm run verify:phase6` — backup/restore RLS and Excel acceptance checks

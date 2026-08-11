@@ -11,6 +11,8 @@ import { getOwnerDashboard } from "@/lib/intelligence/dashboard";
 import { getChartSeries } from "@/lib/intelligence/charts";
 import { getManagementAlerts } from "@/lib/intelligence/alerts";
 import { getReportContext } from "@/lib/intelligence/context";
+import { BackupHealthCard } from "@/components/backup/BackupHealthCard";
+import { getBackupHealth } from "@/lib/backup/actions";
 import { getSalesmanSalesSummary, listSales } from "@/lib/sales/actions";
 import { createClient } from "@/lib/supabase/server";
 
@@ -38,10 +40,13 @@ export default async function DashboardPage({
     );
   }
 
-  const [kpis, charts, alerts] = await Promise.all([
+  const [kpis, charts, alerts, backupHealth] = await Promise.all([
     getOwnerDashboard(ctx.filters),
     getChartSeries(ctx.filters),
     getManagementAlerts(ctx.filters.companyIds),
+    ctx.profile.role === "OWNER" || ctx.profile.role === "ADMIN"
+      ? getBackupHealth().catch(() => null)
+      : Promise.resolve(null),
   ]);
 
   const kpiRows = [
@@ -111,6 +116,8 @@ export default async function DashboardPage({
           fy: ctx.filters.financialYear || "",
         }}
       />
+
+      {backupHealth && <BackupHealthCard health={backupHealth} />}
 
       <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
         {kpiRows.map((k) => (
