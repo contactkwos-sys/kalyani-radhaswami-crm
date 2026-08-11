@@ -19,6 +19,18 @@ export type CompanyScope = "KALYANI" | "RADHASWAMI" | "ALL";
 
 export type CompanyCode = "KALYANI" | "RADHASWAMI";
 
+export type MasterStatus = "ACTIVE" | "INACTIVE";
+
+export type PartyStatus =
+  | "NEW"
+  | "PROSPECT"
+  | "SAMPLE"
+  | "TRIAL"
+  | "CONVERTED"
+  | "REGULAR"
+  | "DORMANT"
+  | "LOST";
+
 export interface Company {
   id: string;
   code: CompanyCode;

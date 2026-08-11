@@ -7,9 +7,13 @@ import { SignOutButton } from "@/components/auth/SignOutButton";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/products", label: "Products" },
+  { href: "/salesmen", label: "Salesmen" },
+  { href: "/parties", label: "Parties" },
+  { href: "/assignments", label: "Assignments", ownerAdmin: true },
   { href: "/settings/company", label: "Company" },
   { href: "/settings/license", label: "License" },
-  { href: "/settings/security", label: "Security" },
+  { href: "/settings/security", label: "Security", ownerOnly: true },
 ];
 
 export function AppShell({
@@ -47,7 +51,10 @@ export function AppShell({
         </div>
         <nav className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-4 pb-2">
           {NAV.filter((item) => {
-            if (item.href === "/settings/security") return profile.role === "OWNER";
+            if ("ownerOnly" in item && item.ownerOnly)
+              return profile.role === "OWNER";
+            if ("ownerAdmin" in item && item.ownerAdmin)
+              return profile.role === "OWNER" || profile.role === "ADMIN";
             return true;
           }).map((item) => (
             <Link

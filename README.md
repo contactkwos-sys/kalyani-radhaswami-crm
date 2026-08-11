@@ -12,7 +12,8 @@ Built by Kumaresh Budhia · Support: contact.kwos@gmail.com · WhatsApp: [98250-
 
 ## Phase status
 
-- **Phase 1 (this branch):** foundation, auth, companies, roles, trial/license, owner security, audit logs
+- **Phase 1:** foundation, auth, companies, roles, trial/license, owner security, audit logs
+- **Phase 2:** Product / Salesman / Party masters + Party→Product→Salesman assignments
 - Phase 2+: masters, visits/GPS, sales, analytics (planned)
 
 ## Setup
