@@ -9,7 +9,8 @@
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "db:migrate": "node scripts/apply-migration.js",
-    "db:seed-owner": "node scripts/seed-owner.js"
+    "db:seed-owner": "node scripts/seed-owner.js",
+    "verify:phase123": "node scripts/verify-phase123.js"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
