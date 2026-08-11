@@ -1,7 +1,12 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import type { BackupHealth, BackupJob, BackupSettings, RestorePreview } from "@/types/backup";
+import { useMemo, useRef, useState, useTransition } from "react";
+import type {
+  BackupHealth,
+  BackupJob,
+  BackupSettings,
+  RestorePreview,
+} from "@/types/backup";
 import type { Company } from "@/types/database";
 
 function downloadBlob(blob: Blob, fileName: string) {
@@ -17,6 +22,46 @@ function dispositionName(header: string | null, fallback: string) {
   if (!header) return fallback;
   const m = /filename="([^"]+)"/.exec(header);
   return m?.[1] || fallback;
+}
+
+function formatLastBackup(iso: string | undefined): string {
+  if (!iso) return "Never";
+  const d = new Date(iso);
+  const now = new Date();
+  const time = d.toLocaleTimeString("en-IN", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "Asia/Kolkata",
+  });
+  const sameDay =
+    d.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }) ===
+    now.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+  if (sameDay) return `Today ${time}`;
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const isYesterday =
+    d.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }) ===
+    yesterday.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+  if (isYesterday) return `Yesterday ${time}`;
+  return `${d.toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "Asia/Kolkata",
+  })} — ${time}`;
+}
+
+function frequencyLabel(freq: string) {
+  if (freq === "WEEKLY") return "Every Week";
+  if (freq === "MONTHLY") return "Every Month";
+  return "Every Day";
+}
+
+function statusLabel(status: BackupHealth["status"]) {
+  if (status === "GREEN") return { text: "✓ Safe", className: "text-emerald-700" };
+  if (status === "RED") return { text: "✗ Needs attention", className: "text-red-700" };
+  return { text: "● Due soon", className: "text-amber-700" };
 }
 
 export function BackupCenter({
@@ -55,12 +100,12 @@ export function BackupCenter({
   const [moduleName, setModuleName] = useState("parties");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [showRestore, setShowRestore] = useState(false);
+  const restoreInputRef = useRef<HTMLInputElement>(null);
 
-  const healthTone = useMemo(() => {
-    if (health.status === "GREEN") return "border-emerald-200 bg-emerald-50 text-emerald-900";
-    if (health.status === "RED") return "border-red-200 bg-red-50 text-red-900";
-    return "border-amber-200 bg-amber-50 text-amber-900";
-  }, [health.status]);
+  const status = useMemo(() => statusLabel(health.status), [health.status]);
+  const driveConnected = Boolean(driveEmail);
+  const driveReady = driveConfigured && driveConnected;
 
   function backupNow(uploadDrive: boolean) {
     setError(null);
@@ -77,15 +122,18 @@ export function BackupCenter({
           throw new Error(j.error || "Backup failed");
         }
         const counts = JSON.parse(res.headers.get("X-Backup-Counts") || "{}");
+        const driveStatus = res.headers.get("X-Backup-Drive-Status");
         const blob = await res.blob();
         downloadBlob(
           blob,
           dispositionName(res.headers.get("Content-Disposition"), "crm-backup.xlsx")
         );
-        setMessage(
-          `Backup completed successfully.\nCompanies: ${counts.Companies ?? "—"}\nParties: ${counts.Parties ?? "—"}\nProducts: ${counts.Products ?? "—"}\nSalesmen: ${counts.Salesmen ?? "—"}\nVisits: ${counts.Visits ?? "—"}\nSales: ${counts.Sales ?? "—"}`
-        );
-        // refresh history lightly
+        let msg = `Backup completed successfully.\nCompanies: ${counts.Companies ?? "—"}\nParties: ${counts.Parties ?? "—"}\nProducts: ${counts.Products ?? "—"}\nSalesmen: ${counts.Salesmen ?? "—"}\nVisits: ${counts.Visits ?? "—"}\nSales: ${counts.Sales ?? "—"}`;
+        if (uploadDrive && driveStatus === "FAILED") {
+          msg +=
+            "\n\nGoogle Drive backup failed. Your local backup is still safe.";
+        }
+        setMessage(msg);
         window.location.reload();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Backup failed");
@@ -93,7 +141,38 @@ export function BackupCenter({
     });
   }
 
-  function saveSettings(form: FormData) {
+  function toggleAutomatic() {
+    if (!canManageSettings) return;
+    setError(null);
+    startTransition(async () => {
+      try {
+        const res = await fetch("/api/backup/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            automatic_enabled: !settings.automatic_enabled,
+            frequency: settings.frequency,
+            backup_hour_ist: settings.backup_hour_ist,
+            backup_minute_ist: settings.backup_minute_ist,
+            google_drive_enabled: settings.google_drive_enabled,
+            accountant_export_allowed: settings.accountant_export_allowed,
+          }),
+        });
+        const j = await res.json();
+        if (!res.ok) throw new Error(j.error || "Save failed");
+        setSettings(j.settings);
+        setMessage(
+          j.settings.automatic_enabled
+            ? "Automatic backup turned ON."
+            : "Automatic backup turned OFF."
+        );
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Save failed");
+      }
+    });
+  }
+
+  function saveAdvancedSettings(form: FormData) {
     setError(null);
     startTransition(async () => {
       try {
@@ -125,6 +204,7 @@ export function BackupCenter({
     setError(null);
     setMessage(null);
     setPreview(null);
+    setShowRestore(true);
     startTransition(async () => {
       try {
         const fd = new FormData();
@@ -141,7 +221,7 @@ export function BackupCenter({
           preview: j.preview,
           isValid: j.isValid,
         });
-        setMessage(j.message);
+        setMessage(j.message || "Import preview ready. Confirm to restore.");
       } catch (err) {
         setError(
           err instanceof Error
@@ -173,6 +253,7 @@ export function BackupCenter({
         if (!res.ok) throw new Error(j.error || "Restore failed");
         setMessage("Restore completed successfully.");
         setPreview(null);
+        setShowRestore(false);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Restore failed");
       }
@@ -213,41 +294,157 @@ export function BackupCenter({
 
   const field =
     "mt-1 w-full rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm";
+  const primaryBtn =
+    "w-full rounded-xl bg-[var(--accent)] px-4 py-4 text-base font-semibold text-white disabled:opacity-60";
+  const secondaryBtn =
+    "w-full rounded-xl border border-[var(--border)] bg-white px-4 py-4 text-base font-semibold disabled:opacity-60";
 
   return (
-    <div className="space-y-6">
-      <section className={`rounded-xl border p-4 ${healthTone}`}>
-        <h3 className="font-semibold">Backup Health — {health.status}</h3>
-        <p className="mt-1 text-sm">{health.message}</p>
-        <ul className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-          <li>
+    <div className="mx-auto max-w-lg space-y-5">
+      {/* Primary backup card — matches Owner DATA BACKUP surface */}
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm sm:p-6">
+        <div className="space-y-1">
+          <p className="text-sm text-[var(--muted)]">
             Last Backup:{" "}
-            {health.lastSuccess
-              ? new Date(health.lastSuccess.created_at).toLocaleString()
-              : "—"}
-          </li>
-          <li>
-            Google Drive:{" "}
-            {health.lastDriveSuccess?.drive_status ||
-              (driveEmail ? "CONNECTED" : "NOT_CONFIGURED")}
-          </li>
-          <li>Excel Export: READY</li>
-          <li>
-            Automatic: {health.automaticEnabled ? `ON (${health.frequency})` : "OFF"}
-          </li>
-          <li>
-            Last failed:{" "}
-            {health.lastFailed
-              ? new Date(health.lastFailed.created_at).toLocaleString()
-              : "—"}
-          </li>
-          <li>
-            Size:{" "}
-            {health.lastSuccess?.file_size_bytes
-              ? `${Math.round(Number(health.lastSuccess.file_size_bytes) / 1024)} KB`
-              : "—"}
-          </li>
-        </ul>
+            <span className="font-medium text-[var(--ink)]">
+              {formatLastBackup(health.lastSuccess?.created_at)}
+            </span>
+          </p>
+          <p className="text-sm text-[var(--muted)]">
+            Status:{" "}
+            <span className={`font-semibold ${status.className}`}>
+              {status.text}
+            </span>
+          </p>
+        </div>
+
+        {canFullBackup && (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => backupNow(false)}
+            className={`mt-5 ${primaryBtn}`}
+          >
+            Backup Now
+          </button>
+        )}
+
+        <div className="mt-6 space-y-3 border-t border-[var(--border)] pt-5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-[var(--ink)]">
+                Automatic Backup
+              </p>
+              <p className="mt-0.5 text-sm text-[var(--muted)]">
+                <span
+                  className={
+                    settings.automatic_enabled
+                      ? "font-semibold text-emerald-700"
+                      : "font-semibold text-[var(--muted)]"
+                  }
+                >
+                  {settings.automatic_enabled ? "● ON" : "○ OFF"}
+                </span>
+              </p>
+            </div>
+            {canManageSettings && (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={toggleAutomatic}
+                className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-semibold"
+              >
+                {settings.automatic_enabled ? "Turn off" : "Turn on"}
+              </button>
+            )}
+          </div>
+
+          <div>
+            <p className="text-sm font-semibold text-[var(--ink)]">
+              Backup Frequency
+            </p>
+            <p className="mt-0.5 text-sm text-[var(--muted)]">
+              {frequencyLabel(settings.frequency)}
+              {settings.automatic_enabled
+                ? ` · ${String(settings.backup_hour_ist).padStart(2, "0")}:${String(settings.backup_minute_ist).padStart(2, "0")} IST`
+                : ""}
+            </p>
+          </div>
+        </div>
+
+        {canFullBackup && (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => backupNow(false)}
+            className={`mt-5 ${secondaryBtn}`}
+          >
+            Download Excel Backup
+          </button>
+        )}
+
+        {isOwner && (
+          <>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => {
+                setShowRestore(true);
+                restoreInputRef.current?.click();
+              }}
+              className={`mt-3 ${secondaryBtn}`}
+            >
+              Restore From Excel
+            </button>
+            <input
+              ref={restoreInputRef}
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              className="hidden"
+              onChange={(e) => onRestoreFile(e.target.files?.[0] || null)}
+            />
+          </>
+        )}
+
+        {isOwner && (
+          <div className="mt-6 space-y-3 border-t border-[var(--border)] pt-5">
+            <div>
+              <p className="text-sm font-semibold text-[var(--ink)]">
+                Google Drive
+              </p>
+              <p className="mt-0.5 text-sm text-[var(--muted)]">
+                {driveReady ? (
+                  <span className="font-semibold text-emerald-700">
+                    ✓ Connected
+                    {driveEmail ? ` · ${driveEmail}` : ""}
+                  </span>
+                ) : driveConfigured ? (
+                  <span>Not connected</span>
+                ) : (
+                  <span>Not configured on server</span>
+                )}
+              </p>
+            </div>
+            {driveConfigured && !driveConnected && (
+              <a
+                href="/api/backup/drive/connect"
+                className={`inline-flex ${secondaryBtn} items-center justify-center`}
+              >
+                Connect Google Drive
+              </a>
+            )}
+            {canFullBackup && (
+              <button
+                type="button"
+                disabled={pending || !driveReady}
+                onClick={() => backupNow(true)}
+                className={primaryBtn}
+              >
+                Backup Now to Google Drive
+              </button>
+            )}
+          </div>
+        )}
       </section>
 
       {(message || error) && (
@@ -262,194 +459,12 @@ export function BackupCenter({
         </div>
       )}
 
-      <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
-        <h3 className="font-semibold">Company scope</h3>
-        <select
-          className={field}
-          value={companyScope}
-          onChange={(e) => setCompanyScope(e.target.value)}
-        >
-          <option value="ALL">Both companies</option>
-          {companies.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </section>
-
-      <section className="grid gap-3 sm:grid-cols-2">
-        {canFullBackup && (
-          <>
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() => backupNow(false)}
-              className="rounded-xl bg-[var(--accent)] px-4 py-4 text-base font-semibold text-white disabled:opacity-60"
-            >
-              BACKUP NOW
-            </button>
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() => backupNow(false)}
-              className="rounded-xl border border-[var(--border)] bg-white px-4 py-4 text-base font-semibold disabled:opacity-60"
-            >
-              DOWNLOAD EXCEL
-            </button>
-            <button
-              type="button"
-              disabled={pending || !settings.google_drive_enabled}
-              onClick={() => backupNow(true)}
-              className="rounded-xl border border-[var(--border)] bg-white px-4 py-4 text-base font-semibold disabled:opacity-60 sm:col-span-2"
-            >
-              BACKUP NOW + GOOGLE DRIVE
-            </button>
-          </>
-        )}
-        {isOwner && (
-          <a
-            href="#restore-data"
-            className="rounded-xl border border-[var(--border)] bg-white px-4 py-4 text-center text-base font-semibold"
-          >
-            RESTORE DATA
-          </a>
-        )}
-        <a
-          href="#backup-history"
-          className="rounded-xl border border-[var(--border)] bg-white px-4 py-4 text-center text-base font-semibold"
-        >
-          BACKUP HISTORY
-        </a>
-        {isOwner && (
-          <a
-            href="#google-drive"
-            className="rounded-xl border border-[var(--border)] bg-white px-4 py-4 text-center text-base font-semibold sm:col-span-2"
-          >
-            GOOGLE DRIVE
-          </a>
-        )}
-      </section>
-
-      {canManageSettings && (
-      <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 space-y-3">
-        <h3 className="font-semibold">A. Automatic Backup</h3>
-        <form
-          action={(fd) => saveSettings(fd)}
-          className="grid gap-3 sm:grid-cols-2"
-        >
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              name="automatic_enabled"
-              defaultChecked={settings.automatic_enabled}
-            />
-            Automatic Backup ON
-          </label>
-          <label className="text-sm">
-            Frequency
-            <select
-              name="frequency"
-              defaultValue={settings.frequency}
-              className={field}
-            >
-              <option value="DAILY">Daily</option>
-              <option value="WEEKLY">Weekly</option>
-              <option value="MONTHLY">Monthly</option>
-            </select>
-          </label>
-          <label className="text-sm">
-            Hour (IST)
-            <input
-              type="number"
-              name="backup_hour_ist"
-              min={0}
-              max={23}
-              defaultValue={settings.backup_hour_ist}
-              className={field}
-            />
-          </label>
-          <label className="text-sm">
-            Minute (IST)
-            <input
-              type="number"
-              name="backup_minute_ist"
-              min={0}
-              max={59}
-              defaultValue={settings.backup_minute_ist}
-              className={field}
-            />
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              name="google_drive_enabled"
-              defaultChecked={settings.google_drive_enabled}
-            />
-            Upload automatic backups to Google Drive
-          </label>
-          {isOwner && (
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                name="accountant_export_allowed"
-                defaultChecked={settings.accountant_export_allowed}
-              />
-              Allow Accountant module exports
-            </label>
-          )}
-          <div className="sm:col-span-2">
-            <button
-              type="submit"
-              disabled={pending}
-              className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white"
-            >
-              Save automatic settings
-            </button>
-            <p className="mt-2 text-xs text-[var(--muted)]">
-              Scheduler: call <code>/api/backup/cron</code> every 15 minutes with{" "}
-              <code>Authorization: Bearer CRON_SECRET</code>. Application backup +
-              Excel + Drive are additional to Supabase native database backups.
-            </p>
-          </div>
-        </form>
-      </section>
-      )}
-
-      {isOwner && (
-        <section
-          id="google-drive"
-          className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 space-y-3"
-        >
-          <h3 className="font-semibold">F. Google Drive Backup</h3>
-          <p className="text-sm text-[var(--muted)]">
-            {driveConfigured
-              ? driveEmail
-                ? `Connected as ${driveEmail}`
-                : "Ready to connect Google account (tokens stored server-side only)."
-              : "Server env GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_REDIRECT_URI not set."}
-          </p>
-          {driveConfigured && (
-            <a
-              href="/api/backup/drive/connect"
-              className="inline-block rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white"
-            >
-              {driveEmail ? "Reconnect Google Drive" : "Connect Google Drive"}
-            </a>
-          )}
-          <p className="text-xs text-[var(--muted)]">
-            Folder: Kalyani-Radhaswami CRM / Backups / Daily|Weekly|Monthly. Failed
-            Drive uploads keep the local Excel backup and are logged.
-          </p>
-        </section>
-      )}
-
-      {isOwner && (
+      {isOwner && showRestore && (
         <section
           id="restore-data"
-          className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 space-y-3"
+          className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 space-y-3"
         >
-          <h3 className="font-semibold">D. Restore / Import</h3>
+          <h3 className="font-semibold">Restore From Excel</h3>
           <div className="flex flex-wrap gap-3 text-sm">
             <label className="flex items-center gap-2">
               <input
@@ -465,15 +480,16 @@ export function BackupCenter({
                 checked={restoreMode === "FULL"}
                 onChange={() => setRestoreMode("FULL")}
               />
-              FULL RESTORE (Owner confirmation + safety backup)
+              FULL RESTORE
             </label>
           </div>
-          <input
-            type="file"
-            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            onChange={(e) => onRestoreFile(e.target.files?.[0] || null)}
-            className="block w-full text-sm"
-          />
+          <button
+            type="button"
+            className="text-sm font-semibold text-[var(--accent)]"
+            onClick={() => restoreInputRef.current?.click()}
+          >
+            Choose another Excel file…
+          </button>
           {preview && (
             <div className="rounded-lg border border-[var(--border)] p-3 text-sm">
               <h4 className="font-semibold">IMPORT PREVIEW</h4>
@@ -518,6 +534,7 @@ export function BackupCenter({
                       }),
                     });
                     setPreview(null);
+                    setShowRestore(false);
                     setMessage("Restore cancelled.");
                   }}
                   className="rounded-md border px-4 py-2"
@@ -530,139 +547,221 @@ export function BackupCenter({
         </section>
       )}
 
-      <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 space-y-3">
-        <h3 className="font-semibold">C / 15. Module Excel Export</h3>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="text-sm">
-            Module
+      <details className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
+        <summary className="cursor-pointer text-sm font-semibold text-[var(--ink)]">
+          More options — company scope, schedule, exports, history
+        </summary>
+        <div className="mt-4 space-y-5">
+          <label className="block text-sm">
+            Company scope
             <select
               className={field}
-              value={moduleName}
-              onChange={(e) => setModuleName(e.target.value)}
+              value={companyScope}
+              onChange={(e) => setCompanyScope(e.target.value)}
             >
-              {[
-                "parties",
-                "products",
-                "salesmen",
-                "visits",
-                "gps",
-                "followups",
-                "sales",
-                "incentives",
-                "targets",
-                "party360",
-              ].map((m) => (
-                <option key={m} value={m}>
-                  {m}
+              <option value="ALL">Both companies</option>
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
                 </option>
               ))}
             </select>
           </label>
-          <div className="grid grid-cols-2 gap-2">
-            <label className="text-sm">
-              From
-              <input
-                type="date"
-                className={field}
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-              />
-            </label>
-            <label className="text-sm">
-              To
-              <input
-                type="date"
-                className={field}
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-              />
-            </label>
+
+          {canManageSettings && (
+            <form
+              action={(fd) => saveAdvancedSettings(fd)}
+              className="grid gap-3 sm:grid-cols-2"
+            >
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  name="automatic_enabled"
+                  defaultChecked={settings.automatic_enabled}
+                />
+                Automatic Backup ON
+              </label>
+              <label className="text-sm">
+                Frequency
+                <select
+                  name="frequency"
+                  defaultValue={settings.frequency}
+                  className={field}
+                >
+                  <option value="DAILY">Every Day</option>
+                  <option value="WEEKLY">Every Week</option>
+                  <option value="MONTHLY">Every Month</option>
+                </select>
+              </label>
+              <label className="text-sm">
+                Hour (IST)
+                <input
+                  type="number"
+                  name="backup_hour_ist"
+                  min={0}
+                  max={23}
+                  defaultValue={settings.backup_hour_ist}
+                  className={field}
+                />
+              </label>
+              <label className="text-sm">
+                Minute (IST)
+                <input
+                  type="number"
+                  name="backup_minute_ist"
+                  min={0}
+                  max={59}
+                  defaultValue={settings.backup_minute_ist}
+                  className={field}
+                />
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  name="google_drive_enabled"
+                  defaultChecked={settings.google_drive_enabled}
+                />
+                Upload automatic backups to Google Drive
+              </label>
+              {isOwner && (
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    name="accountant_export_allowed"
+                    defaultChecked={settings.accountant_export_allowed}
+                  />
+                  Allow Accountant module exports
+                </label>
+              )}
+              <div className="sm:col-span-2">
+                <button
+                  type="submit"
+                  disabled={pending}
+                  className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white"
+                >
+                  Save schedule settings
+                </button>
+              </div>
+            </form>
+          )}
+
+          {isOwner && driveConfigured && driveConnected && (
+            <a
+              href="/api/backup/drive/connect"
+              className="inline-block text-sm font-semibold text-[var(--accent)]"
+            >
+              Reconnect Google Drive
+            </a>
+          )}
+
+          <div className="space-y-3">
+            <h4 className="text-sm font-semibold">Module Excel Export</h4>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-sm">
+                Module
+                <select
+                  className={field}
+                  value={moduleName}
+                  onChange={(e) => setModuleName(e.target.value)}
+                >
+                  {[
+                    "parties",
+                    "products",
+                    "salesmen",
+                    "visits",
+                    "gps",
+                    "followups",
+                    "sales",
+                    "incentives",
+                    "targets",
+                    "party360",
+                  ].map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="text-sm">
+                  From
+                  <input
+                    type="date"
+                    className={field}
+                    value={from}
+                    onChange={(e) => setFrom(e.target.value)}
+                  />
+                </label>
+                <label className="text-sm">
+                  To
+                  <input
+                    type="date"
+                    className={field}
+                    value={to}
+                    onChange={(e) => setTo(e.target.value)}
+                  />
+                </label>
+              </div>
+            </div>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={exportModule}
+              className="rounded-md border border-[var(--border)] px-4 py-2 text-sm font-semibold"
+            >
+              Export selected module
+            </button>
+          </div>
+
+          <div id="backup-history">
+            <h4 className="text-sm font-semibold">Backup History</h4>
+            <div className="mt-2 overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <thead className="text-xs uppercase text-[var(--muted)]">
+                  <tr>
+                    <th className="py-2 pr-2">Date</th>
+                    <th className="py-2 pr-2">Type</th>
+                    <th className="py-2 pr-2">Status</th>
+                    <th className="py-2 pr-2">Drive</th>
+                    <th className="py-2">File</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {jobs.map((j) => (
+                    <tr key={j.id} className="border-t border-[var(--border)]">
+                      <td className="py-2 pr-2 whitespace-nowrap">
+                        {formatLastBackup(j.created_at)}
+                      </td>
+                      <td className="py-2 pr-2">{j.backup_type}</td>
+                      <td className="py-2 pr-2">{j.status}</td>
+                      <td className="py-2 pr-2">{j.drive_status}</td>
+                      <td className="py-2">
+                        {j.storage_path ? (
+                          <a
+                            className="text-[var(--accent)] hover:underline"
+                            href={`/api/backup/download/${j.id}`}
+                          >
+                            Download
+                          </a>
+                        ) : (
+                          j.file_name
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {jobs.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="py-4 text-[var(--muted)]">
+                        No backups yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
-        <button
-          type="button"
-          disabled={pending}
-          onClick={exportModule}
-          className="rounded-md border border-[var(--border)] px-4 py-2 text-sm font-semibold"
-        >
-          Export selected module
-        </button>
-      </section>
-
-      <section
-        id="backup-history"
-        className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4"
-      >
-        <h3 className="font-semibold">E. Backup History</h3>
-        <div className="mt-3 overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
-            <thead className="text-xs uppercase text-[var(--muted)]">
-              <tr>
-                <th className="py-2 pr-2">Date</th>
-                <th className="py-2 pr-2">Type</th>
-                <th className="py-2 pr-2">Company</th>
-                <th className="py-2 pr-2">File</th>
-                <th className="py-2 pr-2">Records</th>
-                <th className="py-2 pr-2">Status</th>
-                <th className="py-2 pr-2">Drive</th>
-                <th className="py-2 pr-2">Download</th>
-                <th className="py-2">Restore</th>
-              </tr>
-            </thead>
-            <tbody>
-              {jobs.map((j) => (
-                <tr key={j.id} className="border-t border-[var(--border)]">
-                  <td className="py-2 pr-2">
-                    {new Date(j.created_at).toLocaleString()}
-                  </td>
-                  <td className="py-2 pr-2">{j.backup_type}</td>
-                  <td className="py-2 pr-2">{j.company_scope}</td>
-                  <td className="py-2 pr-2">{j.file_name}</td>
-                  <td className="py-2 pr-2">{j.total_records}</td>
-                  <td className="py-2 pr-2">{j.status}</td>
-                  <td className="py-2 pr-2">{j.drive_status}</td>
-                  <td className="py-2 pr-2">
-                    {j.storage_path ? (
-                      <a
-                        className="text-[var(--accent)] hover:underline"
-                        href={`/api/backup/download/${j.id}`}
-                      >
-                        Download
-                      </a>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td className="py-2">
-                    {isOwner && j.storage_path ? (
-                      <a
-                        className="text-[var(--accent)] hover:underline"
-                        href="#restore-data"
-                        onClick={() =>
-                          setMessage(
-                            "Download this backup, then use RESTORE DATA to upload and confirm MERGE or FULL restore."
-                          )
-                        }
-                      >
-                        Restore
-                      </a>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {jobs.length === 0 && (
-                <tr>
-                  <td colSpan={9} className="py-4 text-[var(--muted)]">
-                    No backups yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      </details>
     </div>
   );
 }

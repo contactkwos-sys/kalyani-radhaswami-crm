@@ -25,7 +25,6 @@ export default async function BackupSettingsPage() {
   let jobs;
   try {
     if (profile.role === "ACCOUNTANT") {
-      // Accountant may only export when Owner enables it — health/jobs use export gate.
       jobs = await listBackupJobs(40);
       health = await getBackupHealth();
       settings = {
@@ -55,19 +54,11 @@ export default async function BackupSettingsPage() {
     profile.role === "OWNER" ? await getDriveConnectionSummary() : null;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--accent)]">
-          Settings → Data Backup
-        </p>
-        <h2 className="font-[family-name:var(--font-display)] text-3xl font-semibold">
-          DATA BACKUP & RESTORE
+    <div className="space-y-5">
+      <div className="mx-auto max-w-lg">
+        <h2 className="font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight">
+          DATA BACKUP
         </h2>
-        <p className="mt-1 text-sm text-[var(--muted)]">
-          Application Excel backups, Google Drive sync, and restore are an
-          additional disaster-recovery layer alongside Supabase native database
-          backups. Database credentials are never exposed in the app.
-        </p>
       </div>
       <BackupCenter
         companies={companies}
