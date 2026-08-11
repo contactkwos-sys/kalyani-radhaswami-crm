@@ -3,6 +3,7 @@ import { CompanySwitcher } from "@/components/company/CompanySwitcher";
 import { BrandingFooter } from "@/components/branding/BrandingFooter";
 import { TrialBanner } from "@/components/license/TrialBanner";
 import { MobileBottomNav } from "@/components/mobile/MobileBottomNav";
+import { GlobalSearch } from "@/components/intelligence/GlobalSearch";
 import type { Company, LicenseView, Profile } from "@/types/database";
 import { SignOutButton } from "@/components/auth/SignOutButton";
 
@@ -13,13 +14,17 @@ const NAV = [
   { href: "/sales", label: "Sales" },
   { href: "/incentives", label: "Incentives" },
   { href: "/reports", label: "Reports", management: true },
+  { href: "/alerts", label: "Alerts", ownerAdmin: true },
   { href: "/intervention", label: "Intervention", ownerAdmin: true },
+  { href: "/reports/matrix", label: "Matrix", ownerAdmin: true },
+  { href: "/reports/daily-review", label: "Daily review", ownerAdmin: true },
   { href: "/products", label: "Products" },
   { href: "/salesmen", label: "Salesmen" },
   { href: "/parties", label: "Parties" },
   { href: "/assignments", label: "Assignments", ownerAdmin: true },
   { href: "/settings/targets", label: "Targets", ownerAdmin: true },
   { href: "/settings/incentives", label: "Incentive rules", ownerAdmin: true },
+  { href: "/settings/intelligence", label: "Intelligence", ownerAdmin: true },
   { href: "/settings/company", label: "Company" },
   { href: "/settings/license", label: "License" },
   { href: "/settings/security", label: "Security", ownerOnly: true },
@@ -50,6 +55,11 @@ export function AppShell({
             </h1>
           </div>
           <div className="flex flex-wrap items-center gap-4">
+            {["OWNER", "ADMIN", "SALES_MANAGER"].includes(profile.role) && (
+              <div className="hidden md:block">
+                <GlobalSearch />
+              </div>
+            )}
             <CompanySwitcher profile={profile} companies={companies} />
             <div className="text-right text-sm">
               <p className="font-medium text-[var(--ink)]">{profile.full_name}</p>

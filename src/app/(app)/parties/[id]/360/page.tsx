@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getParty360 } from "@/lib/sales/development";
 import { DEV_STATUS_LABELS, type DevStatus } from "@/types/sales";
+import { MATRIX_STATUS_LABELS, type MatrixStatus } from "@/types/intelligence";
 import { requireProfile } from "@/lib/auth/session";
 
 export default async function Party360Page({
@@ -20,22 +21,35 @@ export default async function Party360Page({
     notFound();
   }
 
-  const { party, assignments, productStatuses, visits, sales, history, stats } =
-    data;
+  const {
+    party,
+    assignments,
+    productStatuses,
+    visits,
+    sales,
+    history,
+    samples,
+    followups,
+    stats,
+  } = data;
 
   type TimelineItem = {
     at: string;
     sortKey: number;
     title: string;
     detail: string;
-    kind: "visit" | "sale" | "status";
+    kind: string;
   };
 
   const timeline: TimelineItem[] = [];
 
   for (const v of visits) {
-    const fb = Array.isArray(v.feedback) ? v.feedback[0] : v.feedback;
+    const fbRaw = v.feedback;
+    const fb = Array.isArray(fbRaw) ? fbRaw[0] : fbRaw;
+    const smRaw = v.salesman;
+    const sm = Array.isArray(smRaw) ? smRaw[0] : smRaw;
     const start = v.start_at ? new Date(v.start_at) : null;
+    const end = v.end_at ? new Date(v.end_at) : null;
     timeline.push({
       at: start
         ? `${v.visit_date} · ${start.toLocaleTimeString()}`
@@ -43,13 +57,21 @@ export default async function Party360Page({
       sortKey: start ? start.getTime() : 0,
       title: v.gps_verified ? "GPS verified visit" : `Visit (${v.status})`,
       detail: [
-        v.salesman?.name ? `Salesman: ${v.salesman.name}` : null,
-        fb?.person_met ? `Met: ${fb.person_met}` : null,
-        fb?.discussion ? `Discussion: ${fb.discussion}` : null,
+        sm?.name ? `Salesman: ${sm.name}` : null,
+        start ? `Start: ${start.toLocaleTimeString()}` : null,
+        end ? `End: ${end.toLocaleTimeString()}` : null,
         v.duration_seconds != null
           ? `Duration: ${Math.round(Number(v.duration_seconds) / 60)} minutes`
           : null,
+        v.start_latitude != null
+          ? `GPS: ${v.start_latitude}, ${v.start_longitude}`
+          : null,
+        fb?.person_met ? `Met: ${fb.person_met}` : null,
+        fb?.discussion ? `Discussion: ${fb.discussion}` : null,
         fb?.sample_given ? "Sample: Yes" : "Sample: No",
+        fb?.potential_monthly_business
+          ? `Requirement ₹${Number(fb.potential_monthly_business).toLocaleString("en-IN")}`
+          : null,
       ]
         .filter(Boolean)
         .join(" · "),
@@ -58,15 +80,20 @@ export default async function Party360Page({
   }
 
   for (const s of sales) {
+    const smRaw = s.salesman;
+    const sm = Array.isArray(smRaw) ? smRaw[0] : smRaw;
+    const prodRaw = s.product;
+    const prod = Array.isArray(prodRaw) ? prodRaw[0] : prodRaw;
     timeline.push({
       at: s.sale_date,
-      sortKey: new Date(s.sale_date).getTime(),
+      sortKey: new Date(s.sale_date).getTime() + 1,
       title: `Sale ₹${Number(s.sales_value).toLocaleString("en-IN")}`,
       detail: [
-        s.product?.product_name,
-        s.salesman?.name,
+        prod?.product_name,
+        sm?.name,
         s.invoice_number ? `Invoice ${s.invoice_number}` : null,
         `Qty ${s.quantity}`,
+        s.remarks,
       ]
         .filter(Boolean)
         .join(" · "),
@@ -75,12 +102,14 @@ export default async function Party360Page({
   }
 
   for (const h of history) {
+    const prodRaw = h.product;
+    const prod = Array.isArray(prodRaw) ? prodRaw[0] : prodRaw;
     timeline.push({
       at: new Date(h.created_at).toLocaleString(),
       sortKey: new Date(h.created_at).getTime(),
       title: `Status → ${DEV_STATUS_LABELS[h.to_status as DevStatus] || h.to_status}`,
       detail: [
-        h.product?.product_name,
+        prod?.product_name,
         h.from_status
           ? `From ${DEV_STATUS_LABELS[h.from_status as DevStatus] || h.from_status}`
           : null,
@@ -90,6 +119,29 @@ export default async function Party360Page({
         .filter(Boolean)
         .join(" · "),
       kind: "status",
+    });
+  }
+
+  for (const f of followups) {
+    timeline.push({
+      at: f.followup_date,
+      sortKey: new Date(f.followup_date).getTime(),
+      title: f.is_completed ? "Follow-up completed" : "Follow-up scheduled",
+      detail: [f.purpose, f.priority].filter(Boolean).join(" · "),
+      kind: "followup",
+    });
+  }
+
+  for (const s of samples) {
+    const when = s.given_at || s.created_at;
+    timeline.push({
+      at: new Date(when).toLocaleString(),
+      sortKey: new Date(when).getTime(),
+      title: "Sample recorded",
+      detail: [s.notes, s.quantity != null ? `Qty ${s.quantity}` : null]
+        .filter(Boolean)
+        .join(" · "),
+      kind: "sample",
     });
   }
 
@@ -112,7 +164,14 @@ export default async function Party360Page({
           {Array.isArray(party.company)
             ? party.company[0]?.name
             : party.company?.name}{" "}
-          · {party.party_code}
+          · {party.party_code} · {party.contact_person || "—"} ·{" "}
+          {party.mobile || "—"}
+        </p>
+        <p className="text-sm text-[var(--muted)]">
+          {party.address || party.area || ""} {party.city || ""}
+          {party.latitude != null
+            ? ` · GPS ${party.latitude}, ${party.longitude}`
+            : ""}
         </p>
       </div>
 
@@ -137,18 +196,16 @@ export default async function Party360Page({
         <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
           <h3 className="font-semibold">Assigned salesman / products</h3>
           <ul className="mt-3 space-y-2 text-sm">
-            {assignments.map(
-              (a: {
-                id: string;
-                salesman?: { name: string } | null;
-                product?: { product_name: string } | null;
-              }) => (
+            {assignments.map((a) => {
+              const sm = Array.isArray(a.salesman) ? a.salesman[0] : a.salesman;
+              const prod = Array.isArray(a.product) ? a.product[0] : a.product;
+              return (
                 <li key={a.id}>
-                  {a.salesman?.name || "—"}
-                  {a.product ? ` · ${a.product.product_name}` : ""}
+                  {sm?.name || "—"}
+                  {prod ? ` · ${prod.product_name}` : ""}
                 </li>
-              )
-            )}
+              );
+            })}
             {assignments.length === 0 && (
               <li className="text-[var(--muted)]">No assignments</li>
             )}
@@ -157,26 +214,24 @@ export default async function Party360Page({
         <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
           <h3 className="font-semibold">Product development status</h3>
           <ul className="mt-3 space-y-2 text-sm">
-            {productStatuses.map(
-              (p: {
-                id: string;
-                development_status: DevStatus;
-                total_visits: number;
-                total_sales_value: number;
-                product?: { product_name: string } | null;
-              }) => (
+            {productStatuses.map((p) => {
+              const prod = Array.isArray(p.product) ? p.product[0] : p.product;
+              return (
                 <li key={p.id} className="flex justify-between gap-3">
                   <span>
-                    {p.product?.product_name} ·{" "}
-                    {DEV_STATUS_LABELS[p.development_status]}
+                    {prod?.product_name} ·{" "}
+                    {DEV_STATUS_LABELS[p.development_status as DevStatus]}
+                    {p.matrix_status
+                      ? ` · ${MATRIX_STATUS_LABELS[p.matrix_status as MatrixStatus] || p.matrix_status}`
+                      : ""}
                   </span>
                   <span className="text-[var(--muted)]">
                     {p.total_visits}v · ₹
                     {Number(p.total_sales_value).toLocaleString("en-IN")}
                   </span>
                 </li>
-              )
-            )}
+              );
+            })}
             {productStatuses.length === 0 && (
               <li className="text-[var(--muted)]">No product development yet</li>
             )}
@@ -185,10 +240,17 @@ export default async function Party360Page({
       </div>
 
       <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
-        <h3 className="font-semibold">Immutable timeline</h3>
+        <h3 className="font-semibold">Complete chronological history</h3>
+        <p className="mt-1 text-xs text-[var(--muted)]">
+          Immutable timeline — visits, GPS, feedback, samples, follow-ups, sales,
+          status changes
+        </p>
         <ol className="mt-4 space-y-4">
           {timeline.map((item, idx) => (
-            <li key={`${item.sortKey}-${idx}`} className="relative pl-4 border-l border-[var(--border)]">
+            <li
+              key={`${item.sortKey}-${idx}`}
+              className="relative border-l border-[var(--border)] pl-4"
+            >
               <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
                 {item.at} · {item.kind}
               </p>
