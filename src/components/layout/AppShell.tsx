@@ -10,10 +10,16 @@ const NAV = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/today", label: "Today" },
   { href: "/follow-ups", label: "Follow-up" },
+  { href: "/sales", label: "Sales" },
+  { href: "/incentives", label: "Incentives" },
+  { href: "/reports", label: "Reports", management: true },
+  { href: "/intervention", label: "Intervention", ownerAdmin: true },
   { href: "/products", label: "Products" },
   { href: "/salesmen", label: "Salesmen" },
   { href: "/parties", label: "Parties" },
   { href: "/assignments", label: "Assignments", ownerAdmin: true },
+  { href: "/settings/targets", label: "Targets", ownerAdmin: true },
+  { href: "/settings/incentives", label: "Incentive rules", ownerAdmin: true },
   { href: "/settings/company", label: "Company" },
   { href: "/settings/license", label: "License" },
   { href: "/settings/security", label: "Security", ownerOnly: true },
@@ -58,6 +64,10 @@ export function AppShell({
               return profile.role === "OWNER";
             if ("ownerAdmin" in item && item.ownerAdmin)
               return profile.role === "OWNER" || profile.role === "ADMIN";
+            if ("management" in item && item.management)
+              return ["OWNER", "ADMIN", "SALES_MANAGER", "ACCOUNTANT", "VIEWER"].includes(
+                profile.role
+              );
             return true;
           }).map((item) => (
             <Link

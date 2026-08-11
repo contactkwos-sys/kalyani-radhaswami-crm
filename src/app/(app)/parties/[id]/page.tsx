@@ -29,18 +29,101 @@ export default async function PartyDetailPage({
     supabase
       .from("crm_visits")
       .select(
-        "id, visit_date, start_at, end_at, duration_seconds, gps_verified, status, start_distance_meters, salesman:crm_salesmen(name), feedback:crm_visit_feedback(person_met,sample_given,discussion)"
+        "id, visit_date, start_at, end_at, duration_seconds, gps_verified, status, start_distance_meters, salesman_id, salesman:crm_salesmen(name), feedback:crm_visit_feedback(person_met,sample_given,discussion)"
       )
       .eq("party_id", id)
       .order("start_at", { ascending: false }),
     supabase
       .from("crm_salesmen")
-      .select("id")
+      .select("id, monthly_target, name")
       .eq("user_id", ctx.profile.id)
       .eq("company_id", party.company_id)
       .eq("status", "ACTIVE")
       .maybeSingle(),
   ]);
+
+  const month = new Date().toLocaleDateString("en-CA", {
+    timeZone: "Asia/Kolkata",
+  }).slice(0, 7);
+
+  let selfMonitor: {
+    myVisits: number;
+    lastDiscussion: string | null;
+    samples: number;
+    salesValue: number;
+    nextFollowup: string | null;
+    productStatuses: Array<{
+      development_status: string;
+      product?: { product_name: string } | null;
+    }>;
+    achievement: number;
+    target: number;
+    estimatedIncentive: number;
+  } | null = null;
+
+  if (mySalesman && ctx.profile.role === "SALESMAN") {
+    const myVisits = (visits || []).filter((v) => v.salesman_id === mySalesman.id);
+    const lastFb = myVisits
+      .map((v) => (Array.isArray(v.feedback) ? v.feedback[0] : v.feedback))
+      .find((f) => f?.discussion);
+    const [{ data: mySales }, { data: samples }, { data: followups }, { data: pp }, { data: incentives }] =
+      await Promise.all([
+        supabase
+          .from("crm_sales")
+          .select("sales_value, sale_date")
+          .eq("party_id", id)
+          .eq("salesman_id", mySalesman.id),
+        supabase
+          .from("crm_samples")
+          .select("id")
+          .eq("party_id", id)
+          .eq("salesman_id", mySalesman.id),
+        supabase
+          .from("crm_followups")
+          .select("followup_date")
+          .eq("party_id", id)
+          .eq("salesman_id", mySalesman.id)
+          .eq("is_completed", false)
+          .order("followup_date")
+          .limit(1),
+        supabase
+          .from("crm_party_products")
+          .select("development_status, product:crm_products(product_name)")
+          .eq("party_id", id)
+          .eq("is_active", true),
+        supabase
+          .from("crm_incentive_calculations")
+          .select("calculated_amount, status")
+          .eq("salesman_id", mySalesman.id)
+          .eq("year_month", month),
+      ]);
+    const monthSales = await supabase
+      .from("crm_sales")
+      .select("sales_value")
+      .eq("salesman_id", mySalesman.id)
+      .gte("sale_date", `${month}-01`);
+    const monthValue = (monthSales.data || []).reduce(
+      (a, s) => a + Number(s.sales_value),
+      0
+    );
+    const target = Number(mySalesman.monthly_target || 0);
+    selfMonitor = {
+      myVisits: myVisits.filter((v) => v.gps_verified).length,
+      lastDiscussion: lastFb?.discussion || null,
+      samples: (samples || []).length,
+      salesValue: (mySales || []).reduce((a, s) => a + Number(s.sales_value), 0),
+      nextFollowup: followups?.[0]?.followup_date || null,
+      productStatuses: (pp || []) as Array<{
+        development_status: string;
+        product?: { product_name: string } | null;
+      }>,
+      achievement: target > 0 ? (monthValue / target) * 100 : 0,
+      target,
+      estimatedIncentive: (incentives || [])
+        .filter((i) => i.status === "ESTIMATED")
+        .reduce((a, i) => a + Number(i.calculated_amount), 0),
+    };
+  }
 
   const firstAssignment = assignments.salesmen[0] as
     | { salesman_id?: string }
@@ -60,6 +143,12 @@ export default async function PartyDetailPage({
           <p className="text-sm text-[var(--muted)]">
             {party.party_code} · {party.company?.name} · {party.status}
           </p>
+          <Link
+            href={`/parties/${party.id}/360`}
+            className="mt-2 inline-block text-sm font-semibold text-[var(--accent)] hover:underline"
+          >
+            Open Party 360°
+          </Link>
         </div>
         {salesmanForVisit && party.latitude != null && party.longitude != null && (
           <div className="w-full max-w-xs">
@@ -87,6 +176,43 @@ export default async function PartyDetailPage({
         />
         <Stat label="Contact" value={party.contact_person || party.mobile || "—"} />
       </div>
+
+      {selfMonitor && (
+        <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
+          <h3 className="font-semibold">My monitoring (this party)</h3>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
+            <Stat label="My visits" value={String(selfMonitor.myVisits)} />
+            <Stat
+              label="Sales generated"
+              value={`₹${selfMonitor.salesValue.toLocaleString("en-IN")}`}
+            />
+            <Stat label="Samples given" value={String(selfMonitor.samples)} />
+            <Stat label="Follow-up due" value={selfMonitor.nextFollowup || "—"} />
+            <Stat
+              label="My target"
+              value={`₹${selfMonitor.target.toLocaleString("en-IN")}`}
+            />
+            <Stat
+              label="My achievement"
+              value={`${selfMonitor.achievement.toFixed(1)}%`}
+            />
+            <Stat
+              label="My incentive (est.)"
+              value={`₹${selfMonitor.estimatedIncentive.toLocaleString("en-IN")}`}
+            />
+          </div>
+          <p className="mt-3 text-sm text-[var(--muted)]">
+            Last conversation: {selfMonitor.lastDiscussion || "—"}
+          </p>
+          <ul className="mt-2 space-y-1 text-sm">
+            {selfMonitor.productStatuses.map((p, idx) => (
+              <li key={idx}>
+                {p.product?.product_name || "Product"} · {p.development_status}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">

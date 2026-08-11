@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "db:migrate": "node scripts/apply-migration.js",
     "db:seed-owner": "node scripts/seed-owner.js",
-    "verify:phase123": "node scripts/verify-phase123.js"
+    "verify:phase123": "node scripts/verify-phase123.js",
+    "verify:phase4": "node scripts/verify-phase4.js"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

@@ -49,6 +49,7 @@ const productSchema = z.object({
   sales_rate: z.coerce.number().min(0),
   monthly_target: z.coerce.number().min(0),
   incentive_percent: z.coerce.number().min(0).max(100),
+  notes: z.preprocess(emptyToNull, z.string().max(2000).nullable()).optional(),
   status: z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE"),
 });
 
@@ -60,6 +61,7 @@ const salesmanSchema = z.object({
   photo_url: z.preprocess(emptyToNull, z.string().nullable()).optional(),
   territory_id: z.preprocess(emptyToNull, z.string().uuid().nullable()).optional(),
   monthly_target: z.coerce.number().min(0),
+  party_development_target: z.coerce.number().min(0).default(0),
   incentive_rule: z.preprocess(emptyToNull, z.string().max(500).nullable()).optional(),
   joining_date: z.preprocess(emptyToNull, z.string().nullable()).optional(),
   status: z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE"),

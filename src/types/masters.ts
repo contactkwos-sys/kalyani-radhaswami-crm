@@ -28,6 +28,7 @@ export interface Product {
   sales_rate: number;
   monthly_target: number;
   incentive_percent: number;
+  notes: string | null;
   status: MasterStatus;
   created_by: string | null;
   created_at: string;
@@ -45,6 +46,7 @@ export interface Salesman {
   mobile: string | null;
   territory_id: string | null;
   monthly_target: number;
+  party_development_target: number;
   incentive_rule: string | null;
   joining_date: string | null;
   status: MasterStatus;

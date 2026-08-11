@@ -140,6 +140,15 @@ export function ProductForm({
         </label>
       </div>
       <label className="block text-sm">
+        <span className="mb-1 block font-medium">Notes</span>
+        <textarea
+          name="notes"
+          rows={2}
+          defaultValue={product?.notes || ""}
+          className={field}
+        />
+      </label>
+      <label className="block text-sm">
         <span className="mb-1 block font-medium">Status</span>
         <select
           name="status"
