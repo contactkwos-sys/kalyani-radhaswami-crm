@@ -2,11 +2,14 @@ import Link from "next/link";
 import { CompanySwitcher } from "@/components/company/CompanySwitcher";
 import { BrandingFooter } from "@/components/branding/BrandingFooter";
 import { TrialBanner } from "@/components/license/TrialBanner";
+import { MobileBottomNav } from "@/components/mobile/MobileBottomNav";
 import type { Company, LicenseView, Profile } from "@/types/database";
 import { SignOutButton } from "@/components/auth/SignOutButton";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/today", label: "Today" },
+  { href: "/follow-ups", label: "Follow-up" },
   { href: "/products", label: "Products" },
   { href: "/salesmen", label: "Salesmen" },
   { href: "/parties", label: "Parties" },
@@ -67,8 +70,11 @@ export function AppShell({
           ))}
         </nav>
       </header>
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">{children}</main>
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 pb-24 md:pb-6">
+        {children}
+      </main>
       <BrandingFooter compact />
+      <MobileBottomNav />
     </div>
   );
 }
