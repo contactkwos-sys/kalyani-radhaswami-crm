@@ -117,7 +117,7 @@ export function SalesmanForm({
           />
         </label>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-3">
         <label className="block text-sm">
           <span className="mb-1 block font-medium">Monthly Target</span>
           <input
@@ -127,6 +127,16 @@ export function SalesmanForm({
             min="0"
             required
             defaultValue={salesman?.monthly_target ?? 0}
+            className="w-full rounded-md border border-[var(--border)] bg-white px-3 py-2"
+          />
+        </label>
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium">Party development target</span>
+          <input
+            name="party_development_target"
+            type="number"
+            min="0"
+            defaultValue={salesman?.party_development_target ?? 0}
             className="w-full rounded-md border border-[var(--border)] bg-white px-3 py-2"
           />
         </label>

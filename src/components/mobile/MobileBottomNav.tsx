@@ -2,14 +2,20 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Users, CalendarDays, Bell, UserRound } from "lucide-react";
+import {
+  Home,
+  Users,
+  CalendarDays,
+  Bell,
+  IndianRupee,
+} from "lucide-react";
 
 const ITEMS = [
   { href: "/dashboard", label: "HOME", icon: Home },
   { href: "/parties", label: "PARTIES", icon: Users },
   { href: "/today", label: "TODAY", icon: CalendarDays },
+  { href: "/sales", label: "SALES", icon: IndianRupee },
   { href: "/follow-ups", label: "FOLLOW-UP", icon: Bell },
-  { href: "/settings/company", label: "PROFILE", icon: UserRound },
 ];
 
 export function MobileBottomNav() {
