@@ -39,9 +39,11 @@ function PinDots({ length, filled }: { length: number; filled: number }) {
 function PinPad({
   onDigit,
   onBackspace,
+  disabled,
 }: {
   onDigit: (d: string) => void;
   onBackspace: () => void;
+  disabled?: boolean;
 }) {
   const keys = ["1","2","3","4","5","6","7","8","9","","0","back"];
   return (
@@ -51,10 +53,12 @@ function PinPad({
           <button
             key={i}
             type="button"
+            disabled={disabled}
             onClick={() => (k === "back" ? onBackspace() : onDigit(k))}
             style={{
               height: 56, borderRadius: 14, border: "1px solid #e4dac4",
               background: "#fff", fontSize: 18, fontWeight: 700,
+              opacity: disabled ? 0.5 : 1,
             }}
           >
             {k === "back" ? "⌫" : k}
@@ -71,19 +75,20 @@ export default function RoleLoginPage() {
   const router = useRouter();
   const [users, setUsers] = useState<ActiveUserTile[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
-  const [selected, setSelected] = useState<ActiveUserTile | null>(null); // the chosen role tile
-  const [mode, setMode] = useState<"pin" | "setpin">("pin");        // 'pin' | 'setpin'
+  const [selected, setSelected] = useState<ActiveUserTile | null>(null);
+  const [mode, setMode] = useState<"pin" | "setpin">("pin");
   const [pin, setPin] = useState("");
+  const pinRef = useRef("");
   const [tempPin, setTempPin] = useState("");
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
   const [setPinStep, setSetPinStep] = useState<SetPinStep>("temp");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  // Refs avoid stale React state when the 4th confirm digit auto-submits.
   const tempPinRef = useRef("");
   const newPinRef = useRef("");
   const confirmPinRef = useRef("");
+  const lastDigitAt = useRef(0);
 
   const resetSetPinState = () => {
     tempPinRef.current = "";
@@ -108,6 +113,7 @@ export default function RoleLoginPage() {
   const pickUser = (u: ActiveUserTile) => {
     setSelected(u);
     setMode(u.pin_is_set ? "pin" : "setpin");
+    pinRef.current = "";
     setPin("");
     resetSetPinState();
     setError("");
@@ -118,12 +124,12 @@ export default function RoleLoginPage() {
       const role = await getMyRole();
       router.replace(ROLE_HOME[role] || "/dashboard");
     } catch {
-      // Role RPC hiccup must not strand the user after a successful PIN login.
       router.replace("/dashboard");
     }
   };
 
   const submitPin = async (nextPin: string) => {
+    pinRef.current = nextPin;
     setPin(nextPin);
     if (nextPin.length !== 4) return;
     if (!selected) return;
@@ -133,21 +139,26 @@ export default function RoleLoginPage() {
       await goToRoleHome();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Incorrect PIN.");
+      pinRef.current = "";
       setPin("");
     } finally {
       setBusy(false);
     }
   };
 
-  const submitSetPin = async (
-    nextTemp: string,
-    nextNew: string,
-    nextConfirm: string
-  ) => {
+  const submitSetPin = async () => {
     if (!selected) return;
+    const nextTemp = tempPinRef.current;
+    const nextNew = newPinRef.current;
+    const nextConfirm = confirmPinRef.current;
     if (nextNew !== nextConfirm) {
-      setError("New PIN and confirm PIN do not match.");
-      resetSetPinState();
+      setError("New PIN and confirm PIN do not match. Try again.");
+      // Keep temp PIN; only redo new + confirm.
+      newPinRef.current = "";
+      confirmPinRef.current = "";
+      setNewPin("");
+      setConfirmPin("");
+      setSetPinStep("new");
       return;
     }
     setBusy(true);
@@ -163,56 +174,79 @@ export default function RoleLoginPage() {
     }
   };
 
+  const guardDigit = () => {
+    const now = Date.now();
+    if (now - lastDigitAt.current < 120) return false;
+    lastDigitAt.current = now;
+    return true;
+  };
+
   const onSetPinDigit = (d: string) => {
-    if (busy) return;
+    if (busy || !guardDigit()) return;
     setError("");
     if (setPinStep === "temp") {
-      const next = (tempPinRef.current + d).slice(0, 4);
+      if (tempPinRef.current.length >= 4) return;
+      const next = tempPinRef.current + d;
       tempPinRef.current = next;
       setTempPin(next);
-      if (next.length === 4) setSetPinStep("new");
       return;
     }
     if (setPinStep === "new") {
-      const next = (newPinRef.current + d).slice(0, 4);
+      if (newPinRef.current.length >= 4) return;
+      const next = newPinRef.current + d;
       newPinRef.current = next;
       setNewPin(next);
-      if (next.length === 4) setSetPinStep("confirm");
       return;
     }
-    const next = (confirmPinRef.current + d).slice(0, 4);
+    if (confirmPinRef.current.length >= 4) return;
+    const next = confirmPinRef.current + d;
     confirmPinRef.current = next;
     setConfirmPin(next);
-    if (next.length === 4) {
-      void submitSetPin(tempPinRef.current, newPinRef.current, next);
-    }
   };
 
   const onSetPinBackspace = () => {
     if (busy) return;
     if (setPinStep === "confirm") {
-      if (confirmPinRef.current.length > 0) {
-        const next = confirmPinRef.current.slice(0, -1);
-        confirmPinRef.current = next;
-        setConfirmPin(next);
+      const next = confirmPinRef.current.slice(0, -1);
+      confirmPinRef.current = next;
+      setConfirmPin(next);
+      return;
+    }
+    if (setPinStep === "new") {
+      const next = newPinRef.current.slice(0, -1);
+      newPinRef.current = next;
+      setNewPin(next);
+      return;
+    }
+    const next = tempPinRef.current.slice(0, -1);
+    tempPinRef.current = next;
+    setTempPin(next);
+  };
+
+  const advanceSetPinStep = () => {
+    if (busy) return;
+    setError("");
+    if (setPinStep === "temp") {
+      if (tempPinRef.current.length !== 4) {
+        setError("Enter the 4-digit temporary PIN.");
         return;
       }
       setSetPinStep("new");
       return;
     }
     if (setPinStep === "new") {
-      if (newPinRef.current.length > 0) {
-        const next = newPinRef.current.slice(0, -1);
-        newPinRef.current = next;
-        setNewPin(next);
+      if (newPinRef.current.length !== 4) {
+        setError("Enter your new 4-digit PIN.");
         return;
       }
-      setSetPinStep("temp");
+      setSetPinStep("confirm");
       return;
     }
-    const next = tempPinRef.current.slice(0, -1);
-    tempPinRef.current = next;
-    setTempPin(next);
+    if (confirmPinRef.current.length !== 4) {
+      setError("Confirm your 4-digit PIN.");
+      return;
+    }
+    void submitSetPin();
   };
 
   // ---- Screen 1: pick a role tile ------------------------------------
@@ -260,7 +294,7 @@ export default function RoleLoginPage() {
     );
   }
 
-  // ---- Screen 2a: first-time "Set your PIN" (on-screen pad — works on iPad) ----
+  // ---- Screen 2a: first-time "Set your PIN" (pad + Next/Save) ----
   if (mode === "setpin") {
     const stepLabel =
       setPinStep === "temp"
@@ -274,6 +308,9 @@ export default function RoleLoginPage() {
         : setPinStep === "new"
           ? newPin.length
           : confirmPin.length;
+    const canAdvance = filled === 4 && !busy;
+    const actionLabel =
+      setPinStep === "confirm" ? (busy ? "Saving…" : "Save PIN & Open Dashboard") : "Next";
 
     return (
       <div style={{ minHeight: "100vh", background: "#221a2e", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
@@ -289,9 +326,21 @@ export default function RoleLoginPage() {
           <p style={{ color: "#8a8296", fontSize: 12, marginBottom: 8 }}>First-time login — set your PIN</p>
           <p style={{ color: "#c6972e", fontSize: 12, marginBottom: 4 }}>{stepLabel}</p>
           <PinDots length={4} filled={filled} />
-          {busy && <p style={{ color: "#8a8296", fontSize: 12 }}>Saving… opening dashboard</p>}
           {error && <p style={{ color: "#e38a8a", fontSize: 12, marginBottom: 10 }}>{error}</p>}
-          <PinPad onDigit={onSetPinDigit} onBackspace={onSetPinBackspace} />
+          <PinPad onDigit={onSetPinDigit} onBackspace={onSetPinBackspace} disabled={busy} />
+          <button
+            type="button"
+            disabled={!canAdvance}
+            onClick={advanceSetPinStep}
+            style={{
+              width: "100%", marginTop: 16, padding: 14, borderRadius: 12,
+              background: canAdvance ? "#c6972e" : "#444",
+              color: canAdvance ? "#221a2e" : "#888",
+              fontWeight: 700, border: "none",
+            }}
+          >
+            {actionLabel}
+          </button>
           <p style={{ color: "#8a8296", fontSize: 10.5, marginTop: 16 }}>
             Tip: you may keep the same PIN (e.g. 1234) for all three steps.
           </p>
@@ -310,7 +359,18 @@ export default function RoleLoginPage() {
         <p style={{ color: "#8a8296", fontSize: 12, marginTop: 14 }}>Enter PIN</p>
         <PinDots length={4} filled={pin.length} />
         {error && <p style={{ color: "#e38a8a", fontSize: 12 }}>{error}</p>}
-        <PinPad onDigit={(d) => !busy && pin.length < 4 && void submitPin(pin + d)} onBackspace={() => setPin(pin.slice(0, -1))} />
+        <PinPad
+          disabled={busy}
+          onDigit={(d) => {
+            if (busy || pinRef.current.length >= 4 || !guardDigit()) return;
+            void submitPin(pinRef.current + d);
+          }}
+          onBackspace={() => {
+            const next = pinRef.current.slice(0, -1);
+            pinRef.current = next;
+            setPin(next);
+          }}
+        />
         <p style={{ color: "#8a8296", fontSize: 11, marginTop: 20 }}>
           Forgot PIN? <span style={{ color: "#e9c979", fontWeight: 700 }}>Contact Admin</span>
         </p>
