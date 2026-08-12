@@ -15,7 +15,7 @@ const DATABASE_URL =
     process.env.KALYANI_SUPABASE_DB_PASSWORD ||
       process.env.SUPABASE_DB_PASSWORD ||
       ""
-  )}@aws-0-ap-south-1.pooler.supabase.com:6543/postgres`;
+  )}@aws-0-ap-south-1.pooler.supabase.com:5432/postgres`;
 
 async function apply(client, file) {
   const sql = fs.readFileSync(file, "utf8");
