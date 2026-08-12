@@ -64,12 +64,25 @@ exports.handler = async (event) => {
     });
 
     const password = `${tempPin}-${loginSlug}-${PEPPER}`;
+    const crmRoleByLogin = {
+      admin: "ADMIN",
+      ceo: "CEO_1",
+      accountant: "ACCOUNTANT",
+      salesman: "SALESMAN",
+    };
+    const crmRole = crmRoleByLogin[role] || "VIEWER";
 
     const { data: authUser, error: authErr } =
       await supabaseAdmin.auth.admin.createUser({
         email: `${loginSlug}@internal.kwos.local`,
         password,
         email_confirm: true,
+        user_metadata: {
+          app: "crm",
+          crm: "true",
+          role: crmRole,
+          full_name: displayName,
+        },
       });
     if (authErr) {
       return {
@@ -95,6 +108,17 @@ exports.handler = async (event) => {
         body: JSON.stringify({ error: rowErr.message }),
       };
     }
+
+    await supabaseAdmin.from("crm_profiles").upsert(
+      {
+        id: authUser.user.id,
+        email: `${loginSlug}@internal.kwos.local`,
+        full_name: displayName,
+        role: crmRole,
+        is_active: true,
+      },
+      { onConflict: "id" }
+    );
 
     return {
       statusCode: 200,
