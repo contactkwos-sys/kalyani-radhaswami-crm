@@ -65,6 +65,8 @@ function PinPad({
   );
 }
 
+type SetPinStep = "temp" | "new" | "confirm";
+
 export default function RoleLoginPage() {
   const router = useRouter();
   const [users, setUsers] = useState<ActiveUserTile[]>([]);
@@ -75,6 +77,7 @@ export default function RoleLoginPage() {
   const [tempPin, setTempPin] = useState("");
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
+  const [setPinStep, setSetPinStep] = useState<SetPinStep>("temp");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -91,7 +94,12 @@ export default function RoleLoginPage() {
   const pickUser = (u: ActiveUserTile) => {
     setSelected(u);
     setMode(u.pin_is_set ? "pin" : "setpin");
-    setPin(""); setTempPin(""); setNewPin(""); setConfirmPin(""); setError("");
+    setPin("");
+    setTempPin("");
+    setNewPin("");
+    setConfirmPin("");
+    setSetPinStep("temp");
+    setError("");
   };
 
   const goToRoleHome = async () => {
@@ -120,17 +128,67 @@ export default function RoleLoginPage() {
     }
   };
 
-  const submitSetPin = async () => {
+  const submitSetPin = async (
+    nextTemp: string,
+    nextNew: string,
+    nextConfirm: string
+  ) => {
     if (!selected) return;
-    setBusy(true); setError("");
+    setBusy(true);
+    setError("");
     try {
-      await setInitialPin(selected.login_slug, tempPin, newPin, confirmPin);
+      await setInitialPin(selected.login_slug, nextTemp, nextNew, nextConfirm);
       await goToRoleHome();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not set PIN.");
+      setTempPin("");
+      setNewPin("");
+      setConfirmPin("");
+      setSetPinStep("temp");
     } finally {
       setBusy(false);
     }
+  };
+
+  const onSetPinDigit = (d: string) => {
+    if (busy) return;
+    setError("");
+    if (setPinStep === "temp") {
+      const next = (tempPin + d).slice(0, 4);
+      setTempPin(next);
+      if (next.length === 4) setSetPinStep("new");
+      return;
+    }
+    if (setPinStep === "new") {
+      const next = (newPin + d).slice(0, 4);
+      setNewPin(next);
+      if (next.length === 4) setSetPinStep("confirm");
+      return;
+    }
+    const next = (confirmPin + d).slice(0, 4);
+    setConfirmPin(next);
+    if (next.length === 4) void submitSetPin(tempPin, newPin, next);
+  };
+
+  const onSetPinBackspace = () => {
+    if (busy) return;
+    if (setPinStep === "confirm") {
+      if (confirmPin.length > 0) {
+        setConfirmPin(confirmPin.slice(0, -1));
+        return;
+      }
+      setSetPinStep("new");
+      return;
+    }
+    if (setPinStep === "new") {
+      if (newPin.length > 0) {
+        setNewPin(newPin.slice(0, -1));
+        return;
+      }
+      setSetPinStep("temp");
+      return;
+    }
+    setTempPin(tempPin.slice(0, -1));
   };
 
   // ---- Screen 1: pick a role tile ------------------------------------
@@ -178,50 +236,41 @@ export default function RoleLoginPage() {
     );
   }
 
-  // ---- Screen 2a: first-time "Set your PIN" ---------------------------
+  // ---- Screen 2a: first-time "Set your PIN" (on-screen pad — works on iPad) ----
   if (mode === "setpin") {
+    const stepLabel =
+      setPinStep === "temp"
+        ? "1/3 · Enter temporary PIN from admin"
+        : setPinStep === "new"
+          ? "2/3 · Choose your new 4-digit PIN"
+          : "3/3 · Confirm your new PIN";
+    const filled =
+      setPinStep === "temp"
+        ? tempPin.length
+        : setPinStep === "new"
+          ? newPin.length
+          : confirmPin.length;
+
     return (
       <div style={{ minHeight: "100vh", background: "#221a2e", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-        <div style={{ width: "100%", maxWidth: 340, textAlign: "center" }}>
-          <button type="button" onClick={() => setSelected(null)} style={{ color: "#e9c979", fontSize: 12, marginBottom: 20 }}>← Change user</button>
-          <p style={{ color: "#f7f2e7", fontWeight: 700, fontSize: 16 }}>{selected.display_name}</p>
-          <p style={{ color: "#8a8296", fontSize: 12, marginBottom: 8 }}>First-time login — set your PIN</p>
-          <p style={{ color: "#c6972e", fontSize: 11, marginBottom: 16, lineHeight: 1.4 }}>
-            1) Temporary PIN from admin &nbsp;·&nbsp; 2) Your new PIN &nbsp;·&nbsp; 3) Confirm new PIN
-          </p>
-
-          <label style={{ display: "block", color: "#8a8296", fontSize: 11, textAlign: "left", marginBottom: 4 }}>
-            1. Temporary PIN (from admin)
-          </label>
-          <input
-            type="password" inputMode="numeric" maxLength={4} placeholder="e.g. 1234"
-            value={tempPin} onChange={(e) => /^\d{0,4}$/.test(e.target.value) && setTempPin(e.target.value)}
-            style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid #444", marginBottom: 10, textAlign: "center", fontSize: 16 }}
-          />
-          <label style={{ display: "block", color: "#8a8296", fontSize: 11, textAlign: "left", marginBottom: 4 }}>
-            2. New 4-digit PIN (your choice)
-          </label>
-          <input
-            type="password" inputMode="numeric" maxLength={4} placeholder="New PIN"
-            value={newPin} onChange={(e) => /^\d{0,4}$/.test(e.target.value) && setNewPin(e.target.value)}
-            style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid #444", marginBottom: 10, textAlign: "center", fontSize: 16 }}
-          />
-          <label style={{ display: "block", color: "#8a8296", fontSize: 11, textAlign: "left", marginBottom: 4 }}>
-            3. Confirm new PIN
-          </label>
-          <input
-            type="password" inputMode="numeric" maxLength={4} placeholder="Confirm PIN"
-            value={confirmPin} onChange={(e) => /^\d{0,4}$/.test(e.target.value) && setConfirmPin(e.target.value)}
-            style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid #444", marginBottom: 14, textAlign: "center", fontSize: 16 }}
-          />
-          {error && <p style={{ color: "#e38a8a", fontSize: 12, marginBottom: 10 }}>{error}</p>}
+        <div style={{ width: "100%", maxWidth: 320, textAlign: "center" }}>
           <button
             type="button"
-            onClick={submitSetPin} disabled={busy || tempPin.length !== 4 || newPin.length !== 4 || confirmPin.length !== 4}
-            style={{ width: "100%", padding: 14, borderRadius: 12, background: "#c6972e", color: "#221a2e", fontWeight: 700, opacity: busy ? 0.6 : 1 }}
+            onClick={() => setSelected(null)}
+            style={{ color: "#e9c979", fontSize: 12, marginBottom: 20 }}
           >
-            {busy ? "Saving…" : "Save PIN & Continue"}
+            ← Change user
           </button>
+          <p style={{ color: "#f7f2e7", fontWeight: 700, fontSize: 16 }}>{selected.display_name}</p>
+          <p style={{ color: "#8a8296", fontSize: 12, marginBottom: 8 }}>First-time login — set your PIN</p>
+          <p style={{ color: "#c6972e", fontSize: 12, marginBottom: 4 }}>{stepLabel}</p>
+          <PinDots length={4} filled={filled} />
+          {busy && <p style={{ color: "#8a8296", fontSize: 12 }}>Saving… opening dashboard</p>}
+          {error && <p style={{ color: "#e38a8a", fontSize: 12, marginBottom: 10 }}>{error}</p>}
+          <PinPad onDigit={onSetPinDigit} onBackspace={onSetPinBackspace} />
+          <p style={{ color: "#8a8296", fontSize: 10.5, marginTop: 16 }}>
+            Tip: you may keep the same PIN (e.g. 1234) for all three steps.
+          </p>
         </div>
       </div>
     );
