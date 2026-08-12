@@ -23,32 +23,71 @@ export default function SetupWizard() {
   const [results, setResults] = useState({}); // loginSlug -> 'ok' | 'error' | 'pending'
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
   const updateRow = (i, field, value) => {
     setRows((r) => r.map((row, idx) => (idx === i ? { ...row, [field]: value } : row)));
   };
 
+  const verify = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch("/api/dev-verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: devKey }),
+        signal: AbortSignal.timeout(15000),
+      });
+      const rawBody = await res.text();
+      // Temporary debug — remove after confirming unlock works end-to-end
+      console.log("[__kwos_setup verify] status=", res.status, "body=", rawBody);
+      let data = {};
+      try {
+        data = rawBody ? JSON.parse(rawBody) : {};
+      } catch {
+        throw new Error(`Invalid response (${res.status}): ${rawBody.slice(0, 120)}`);
+      }
+      if (!res.ok || !data.ok) {
+        throw new Error(
+          data.error || (res.status === 503
+            ? "DEV_OVERRIDE_KEY not configured on server."
+            : "Invalid developer key.")
+        );
+      }
+      setUnlocked(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Invalid developer key.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const createAll = async () => {
     setRunning(true);
     const nextResults = {};
-    for (const row of rows) {
-      nextResults[row.loginSlug] = "pending";
-      setResults({ ...nextResults });
-      try {
-        const res = await fetch("/api/admin-create-user", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "x-dev-key": devKey },
-          body: JSON.stringify(row),
-        });
-        const data = await res.json();
-        nextResults[row.loginSlug] = res.ok ? "ok" : `error: ${data.error || "unknown"}`;
-      } catch (e) {
-        nextResults[row.loginSlug] = `error: ${e.message}`;
+    try {
+      for (const row of rows) {
+        nextResults[row.loginSlug] = "pending";
+        setResults({ ...nextResults });
+        try {
+          const res = await fetch("/api/admin-create-user", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-dev-key": devKey },
+            body: JSON.stringify(row),
+          });
+          const data = await res.json();
+          nextResults[row.loginSlug] = res.ok ? "ok" : `error: ${data.error || "unknown"}`;
+        } catch (e) {
+          nextResults[row.loginSlug] = `error: ${e.message}`;
+        }
+        setResults({ ...nextResults });
       }
-      setResults({ ...nextResults });
+      setDone(true);
+    } finally {
+      setRunning(false);
     }
-    setRunning(false);
-    setDone(true);
   };
 
   if (!unlocked) {
@@ -60,11 +99,13 @@ export default function SetupWizard() {
           <input
             type="password" placeholder="Developer key" value={devKey}
             onChange={(e) => setDevKey(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && !busy && devKey && verify()}
             style={{ width: "100%", padding: 12, borderRadius: 10, marginBottom: 10, textAlign: "center" }}
           />
-          <button onClick={() => setUnlocked(true)} disabled={!devKey}
+          {error && <p style={{ color: "#e38a8a", fontSize: 12, marginBottom: 8 }}>{error}</p>}
+          <button type="button" onClick={verify} disabled={busy || !devKey}
             style={{ width: "100%", padding: 12, borderRadius: 10, background: "#c6972e", fontWeight: 700 }}>
-            Continue
+            {busy ? "Checking…" : "Continue"}
           </button>
         </div>
       </div>

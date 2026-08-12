@@ -13,7 +13,9 @@ const PEPPER = "kwos-kalyani-radhaswami-2026"; // must match the one in auth lib
 export async function POST(request: Request) {
   try {
     const key = request.headers.get("x-dev-key");
-    if (!key || key !== process.env.DEV_OVERRIDE_KEY) {
+    const expected =
+      process.env.DEV_OVERRIDE_KEY || process.env.DEVELOPER_OVERRIDE_KEY;
+    if (!key || !expected || key !== expected) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

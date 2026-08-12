@@ -27,7 +27,9 @@ exports.handler = async (event) => {
       headers["X-Dev-Key"] ||
       headers["X-DEV-KEY"] ||
       "";
-    if (!key || key !== process.env.DEV_OVERRIDE_KEY) {
+    const expected =
+      process.env.DEV_OVERRIDE_KEY || process.env.DEVELOPER_OVERRIDE_KEY;
+    if (!key || !expected || key !== expected) {
       return {
         statusCode: 401,
         headers: { "Content-Type": "application/json" },
