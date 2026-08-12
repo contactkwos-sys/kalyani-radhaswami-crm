@@ -23,7 +23,7 @@ export default async function LoginPage() {
             Kalyani · Radhaswami
           </h1>
           <p className="mt-2 text-sm text-[var(--muted)]">
-            Select your role, then enter your PIN
+            Select your role, then enter your 4-digit PIN
           </p>
           <div className="mt-6">
             <RoleLoginForm />

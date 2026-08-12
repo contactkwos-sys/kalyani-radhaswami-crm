@@ -1,61 +1,91 @@
-/**
- * Role-tile + PIN auth helpers (reference / Netlify-compatible).
- * App Router implementation lives in src/lib/auth/role-login.ts
- * Adjust supabase import path to match the host project.
- */
+// ============================================================================
+// 02_auth_lib.js
+// PIN-only auth helpers. NO mobile number, NO OTP anywhere in this file.
+// Adjust the `import { supabase } from "..."` path to match your existing
+// Supabase client file in the repo.
+// ============================================================================
+import { supabase } from "@/lib/supabase/browser"; // <-- existing browser client
 
-import { createClient } from "@supabase/supabase-js";
+// Not a secret — just padding so the PIN satisfies Supabase Auth's minimum
+// password length. Real protection comes from Supabase Auth's own hashing,
+// rate limiting and session handling, not from this string.
+const PEPPER = "kwos-kalyani-radhaswami-2026";
 
-export const ROLE_HOMES = {
-  OWNER: "/admin",
-  ADMIN: "/admin",
-  CEO_1: "/ceo",
-  CEO_2: "/ceo",
-  CEO_3: "/ceo",
-  ACCOUNTANT: "/accountant",
-  SALESMAN: "/salesman",
-  SALES_MANAGER: "/salesman",
-};
-
-export function homeForRole(role) {
-  return ROLE_HOMES[role] || "/dashboard";
+function deriveAuthPassword(loginSlug, pin) {
+  return `${pin}-${loginSlug}-${PEPPER}`;
 }
 
-export function createBrowserSupabase() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY
-  );
+function slugEmail(loginSlug) {
+  return `${loginSlug}@internal.kwos.local`;
 }
 
-export async function fetchLoginTiles(supabase) {
-  const { data, error } = await supabase.rpc("list_login_tiles");
+/** Role tiles for the login screen. Safe columns only. */
+export async function listActiveUsers() {
+  const { data, error } = await supabase
+    .from("public_active_users")
+    .select("id, login_slug, display_name, role, pin_is_set")
+    .order("sort_order", { ascending: true });
   if (error) throw error;
-  return data || [];
+  return data;
 }
 
-export async function postRoleLogin({ tileKey, pin }) {
-  const res = await fetch("/api/auth/role-login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tileKey, pin }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const err = new Error(data.error || "Invalid role or PIN.");
-    err.mustSetPin = Boolean(data.mustSetPin);
-    throw err;
+/**
+ * First-time PIN setup. `currentTempPin` is whatever temporary PIN the
+ * admin gave the person when the account was created.
+ */
+export async function setInitialPin(loginSlug, currentTempPin, newPin, confirmPin) {
+  if (newPin.length !== 4 || !/^\d{4}$/.test(newPin)) {
+    throw new Error("PIN must be exactly 4 digits.");
   }
-  return data;
+  if (newPin !== confirmPin) {
+    throw new Error("PINs do not match.");
+  }
+
+  // Step 1 — verify the temporary PIN by actually signing in with it.
+  const { error: verifyErr } = await supabase.auth.signInWithPassword({
+    email: slugEmail(loginSlug),
+    password: deriveAuthPassword(loginSlug, currentTempPin),
+  });
+  if (verifyErr) throw new Error("Current PIN is incorrect.");
+
+  // Step 2 — now that we have an active session, update the password to
+  // the new PIN-derived value.
+  const { error: updateErr } = await supabase.auth.updateUser({
+    password: deriveAuthPassword(loginSlug, newPin),
+  });
+  if (updateErr) throw updateErr;
+
+  // Step 3 — flag this user's row as configured so the tile shows the
+  // normal PIN pad next time, not "Set your PIN" again.
+  const { error: rpcErr } = await supabase.rpc("mark_pin_set");
+  if (rpcErr) throw rpcErr;
 }
 
-export async function postSetPin({ tileKey, pin, confirmPin }) {
-  const res = await fetch("/api/auth/set-pin", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tileKey, pin, confirmPin }),
+/** Normal login — 4-digit PIN only. */
+export async function loginWithPin(loginSlug, pin) {
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: slugEmail(loginSlug),
+    password: deriveAuthPassword(loginSlug, pin),
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || "Unable to set PIN.");
-  return data;
+  if (error) throw new Error("Incorrect PIN. Please try again.");
+  return data.session;
 }
+
+/** Call right after login to decide which dashboard route to send them to. */
+export async function getMyRole() {
+  const { data, error } = await supabase.rpc("get_my_role");
+  if (error) throw error;
+  return data; // 'admin' | 'ceo' | 'accountant' | 'salesman'
+}
+
+export async function logout() {
+  await supabase.auth.signOut();
+}
+
+/** Central map — keep every role's home route here, one source of truth. */
+export const ROLE_HOME = {
+  admin: "/admin",
+  ceo: "/ceo",
+  accountant: "/accountant",
+  salesman: "/salesman",
+};

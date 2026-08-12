@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
-import { listLoginTiles } from "@/lib/auth/role-login";
 
+/** Client uses listActiveUsers() from auth-lib directly. */
 export async function GET() {
-  try {
-    const tiles = await listLoginTiles();
-    return NextResponse.json({ tiles });
-  } catch {
-    return NextResponse.json({ tiles: [] });
-  }
+  return NextResponse.json(
+    { error: "Use public_active_users via auth-lib on the client." },
+    { status: 410 }
+  );
 }

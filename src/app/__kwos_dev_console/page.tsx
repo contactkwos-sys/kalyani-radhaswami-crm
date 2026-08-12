@@ -6,44 +6,48 @@ import { useState } from "react";
  * Hidden diagnostic console — not linked in any nav.
  * Route: /__kwos_dev_console
  *
- * Netlify functions extracted below as real files:
+ * Netlify functions:
  *   api/dev-verify.js
  *   api/admin-create-user.js
  *
- * Env vars (set in Netlify dashboard):
+ * Env vars (Netlify dashboard):
  *   DEV_OVERRIDE_KEY
  *   SUPABASE_SERVICE_ROLE_KEY
- *   NEXT_PUBLIC_SUPABASE_URL (or SUPABASE_URL)
  */
 export default function DevConsoleAccessPage() {
   const [key, setKey] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [fullName, setFullName] = useState("");
-  const [role, setRole] = useState("ADMIN");
+  const [loginSlug, setLoginSlug] = useState("admin");
+  const [displayName, setDisplayName] = useState("");
+  const [tempPin, setTempPin] = useState("");
+  const [role, setRole] = useState("admin");
+  const [sortOrder, setSortOrder] = useState(10);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
+
+  async function post(pathNetlify: string, pathNext: string, payload: unknown) {
+    let r = await fetch(pathNetlify, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).catch(() => null);
+    if (!r) {
+      r = await fetch(pathNext, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    }
+    return r;
+  }
 
   async function verify(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
     setMsg(null);
-    const res = await fetch("/.netlify/functions/dev-verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key }),
-    }).catch(() => null);
-
-    // Fallback to Next route if Netlify function path unavailable locally
-    const r =
-      res ||
-      (await fetch("/api/dev-verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key }),
-      }));
-
+    const r = await post("/.netlify/functions/dev-verify", "/api/dev-verify", {
+      key,
+    });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) {
       setErr(data.error || "Invalid key");
@@ -58,26 +62,19 @@ export default function DevConsoleAccessPage() {
     e.preventDefault();
     setErr(null);
     setMsg(null);
-    const payload = { key, email, password, fullName, role };
-    let r = await fetch("/.netlify/functions/admin-create-user", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    }).catch(() => null);
-    if (!r) {
-      r = await fetch("/api/admin-create-user", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    }
+    const payload = { key, loginSlug, displayName, role, tempPin, sortOrder };
+    const r = await post(
+      "/.netlify/functions/admin-create-user",
+      "/api/admin-create-user",
+      payload
+    );
     const data = await r.json().catch(() => ({}));
     if (!r.ok) {
       setErr(data.error || "Create failed");
       return;
     }
     setMsg(
-      `Created ${data.email || email} (${data.id || "ok"}). Insert app_users row next.`
+      `Created ${data.loginSlug} → ${data.email} (${data.id}). Temp PIN: ${data.tempPinShownOnce}. Give once, then user sets own PIN.`
     );
   }
 
@@ -115,27 +112,33 @@ export default function DevConsoleAccessPage() {
       </form>
 
       {ok && (
-        <form onSubmit={createUser} className="mt-8 space-y-3 border-t border-[var(--border)] pt-6">
-          <h2 className="text-lg font-semibold">Create auth user</h2>
+        <form
+          onSubmit={createUser}
+          className="mt-8 space-y-3 border-t border-[var(--border)] pt-6"
+        >
+          <h2 className="text-lg font-semibold">Create role-tile user</h2>
           <input
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            placeholder="login_slug (e.g. admin, ceo, salesman_01)"
+            value={loginSlug}
+            onChange={(e) => setLoginSlug(e.target.value)}
             className="w-full rounded-md border border-[var(--border)] px-3 py-2"
             required
           />
           <input
-            placeholder="Temporary password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Display name"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
             className="w-full rounded-md border border-[var(--border)] px-3 py-2"
             required
           />
           <input
-            placeholder="Full name"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
+            placeholder="Temporary 4-digit PIN"
+            inputMode="numeric"
+            maxLength={4}
+            value={tempPin}
+            onChange={(e) =>
+              setTempPin(e.target.value.replace(/\D/g, "").slice(0, 4))
+            }
             className="w-full rounded-md border border-[var(--border)] px-3 py-2"
             required
           />
@@ -144,11 +147,18 @@ export default function DevConsoleAccessPage() {
             onChange={(e) => setRole(e.target.value)}
             className="w-full rounded-md border border-[var(--border)] px-3 py-2"
           >
-            <option value="ADMIN">Admin</option>
-            <option value="CEO_1">CEO (Kailash Kalyani)</option>
-            <option value="ACCOUNTANT">Accountant</option>
-            <option value="SALESMAN">Salesman</option>
+            <option value="admin">Admin</option>
+            <option value="ceo">CEO (Kailash Kalyani)</option>
+            <option value="accountant">Accountant</option>
+            <option value="salesman">Salesman</option>
           </select>
+          <input
+            type="number"
+            placeholder="Sort order"
+            value={sortOrder}
+            onChange={(e) => setSortOrder(Number(e.target.value))}
+            className="w-full rounded-md border border-[var(--border)] px-3 py-2"
+          />
           <button
             type="submit"
             className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white"
