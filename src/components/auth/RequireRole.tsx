@@ -1,64 +1,92 @@
 "use client";
 
+// ============================================================================
+// 04_role_guard.jsx
+// Wrap every protected page with <RequireRole role="salesman">...</RequireRole>.
+// This is the CLIENT-SIDE convenience layer only — the real enforcement is
+// the RLS policies in 01_supabase_schema.sql. Never rely on this component
+// alone (this is exactly what broke CEO Mode before — see project notes).
+// ============================================================================
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { AppRole } from "@/types/database";
-import { homeForRole } from "@/lib/auth/role-login";
+import { supabase } from "@/lib/supabase/browser";
+import { getMyRole, ROLE_HOME, type LoginRole } from "@/lib/auth/auth-lib";
 
-type Props = {
-  role: AppRole | AppRole[];
+export default function RequireRole({
+  role,
+  children,
+}: {
+  role: LoginRole;
   children: React.ReactNode;
-  /** Optional profile role from server; if omitted, fetches /api/auth/me */
-  currentRole?: AppRole | null;
-};
-
-function normalize(role: AppRole | AppRole[]): AppRole[] {
-  return Array.isArray(role) ? role : [role];
-}
-
-/**
- * Client guard: keep a user on their own role home.
- * Prefer server-side checks in page.tsx; this is a safety net for client islands.
- */
-export function RequireRole({ role, children, currentRole }: Props) {
+}) {
   const router = useRouter();
-  const allowedKey = normalize(role).join(",");
-  const [ready, setReady] = useState(Boolean(currentRole));
+  const [status, setStatus] = useState<"checking" | "ok" | "denied">("checking"); // checking | ok | denied
 
   useEffect(() => {
     let cancelled = false;
-    const allowed = allowedKey.split(",") as AppRole[];
-    async function run() {
-      let r = currentRole;
-      if (!r) {
-        const res = await fetch("/api/auth/me");
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.role) {
-          router.replace("/login");
-          return;
-        }
-        r = data.role as AppRole;
-      }
-      if (cancelled) return;
-      if (!allowed.includes(r!)) {
-        router.replace(homeForRole(r!));
+
+    async function check() {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) {
+        router.replace("/login");
         return;
       }
-      setReady(true);
+      try {
+        const myRole = await getMyRole();
+        if (cancelled) return;
+        if (myRole === role) {
+          setStatus("ok");
+        } else {
+          // Logged in, but this isn't their page — bounce to their own home,
+          // never show them someone else's screen even for a flash.
+          router.replace(ROLE_HOME[myRole] || "/login");
+        }
+      } catch {
+        router.replace("/login");
+      }
     }
-    run();
+
+    check();
     return () => {
       cancelled = true;
     };
-  }, [allowedKey, currentRole, router]);
+  }, [role, router]);
 
-  if (!ready) {
+  if (status !== "ok") {
     return (
-      <div className="flex min-h-[40vh] items-center justify-center text-sm text-[var(--muted)]">
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "#8a8296",
+        }}
+      >
         Checking access…
       </div>
     );
   }
 
-  return <>{children}</>;
+  return children;
 }
+
+// ----------------------------------------------------------------------------
+// USAGE EXAMPLE — e.g. app/salesman/page.jsx
+//
+// import RequireRole from "@/components/auth/RequireRole";
+//
+// export default function SalesmanPage() {
+//   return (
+//     <RequireRole role="salesman">
+//       <SalesmanDashboard />
+//     </RequireRole>
+//   );
+// }
+//
+// Repeat for app/admin/page.jsx (role="admin"), app/ceo/page.jsx (role="ceo"),
+// app/accountant/page.jsx (role="accountant"). Each role only ever lands on
+// its own route — there is no shared "full app shell" anymore.
+// ----------------------------------------------------------------------------
