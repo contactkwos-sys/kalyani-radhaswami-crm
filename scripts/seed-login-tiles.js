@@ -134,7 +134,12 @@ async function main() {
       throw new Error(`${tile.loginSlug} app_users: ${appErr.message}`);
     }
 
-    // Ensure CRM profile (trigger may already have inserted)
+    // Ensure CRM profile (trigger may already have inserted).
+    // Exec + accountant default to ALL so Kalyani and Radhaswami both open.
+    const scopeAll =
+      tile.crmRole === "ADMIN" ||
+      tile.crmRole === "CEO_1" ||
+      tile.crmRole === "ACCOUNTANT";
     const { error: profErr } = await admin.from("crm_profiles").upsert(
       {
         id,
@@ -142,6 +147,8 @@ async function main() {
         full_name: tile.displayName,
         role: tile.crmRole,
         is_active: true,
+        company_scope: scopeAll ? "ALL" : "KALYANI",
+        preferred_company_id: null,
       },
       { onConflict: "id" }
     );

@@ -48,7 +48,13 @@ export async function getAccessibleCompanies(
 ): Promise<Company[]> {
   const supabase = await createClient();
 
-  if (role === "OWNER" || role === "CEO_1" || role === "CEO_2" || role === "CEO_3") {
+  if (
+    role === "OWNER" ||
+    role === "CEO_1" ||
+    role === "CEO_2" ||
+    role === "CEO_3" ||
+    role === "ADMIN"
+  ) {
     const { data, error } = await supabase
       .from("crm_companies")
       .select("*")
