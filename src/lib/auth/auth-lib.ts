@@ -45,22 +45,31 @@ export async function setInitialPin(
     throw new Error("PIN must be exactly 4 digits.");
   }
   if (newPin !== confirmPin) {
-    throw new Error("PINs do not match.");
+    throw new Error("New PIN and confirm PIN do not match.");
+  }
+  if (!/^\d{4}$/.test(currentTempPin || "")) {
+    throw new Error("Enter the temporary PIN from admin (4 digits).");
   }
 
   const { error: verifyErr } = await supabase.auth.signInWithPassword({
     email: slugEmail(loginSlug),
     password: deriveAuthPassword(loginSlug, currentTempPin),
   });
-  if (verifyErr) throw new Error("Current PIN is incorrect.");
+  if (verifyErr) {
+    throw new Error("Temporary PIN is incorrect.");
+  }
 
-  const { error: updateErr } = await supabase.auth.updateUser({
-    password: deriveAuthPassword(loginSlug, newPin),
-  });
-  if (updateErr) throw updateErr;
+  // Supabase rejects updateUser when new password === old password.
+  // If they keep the same PIN, just mark it set and continue.
+  if (newPin !== currentTempPin) {
+    const { error: updateErr } = await supabase.auth.updateUser({
+      password: deriveAuthPassword(loginSlug, newPin),
+    });
+    if (updateErr) throw new Error(updateErr.message || "Could not save new PIN.");
+  }
 
   const { error: rpcErr } = await supabase.rpc("mark_pin_set");
-  if (rpcErr) throw rpcErr;
+  if (rpcErr) throw new Error(rpcErr.message || "Could not finish PIN setup.");
 }
 
 /** Normal login — 4-digit PIN only. */

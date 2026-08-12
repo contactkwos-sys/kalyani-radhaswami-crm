@@ -180,20 +180,32 @@ export default function RoleLoginPage() {
         <div style={{ width: "100%", maxWidth: 340, textAlign: "center" }}>
           <button type="button" onClick={() => setSelected(null)} style={{ color: "#e9c979", fontSize: 12, marginBottom: 20 }}>← Change user</button>
           <p style={{ color: "#f7f2e7", fontWeight: 700, fontSize: 16 }}>{selected.display_name}</p>
-          <p style={{ color: "#8a8296", fontSize: 12, marginBottom: 16 }}>Set your PIN — first time login</p>
+          <p style={{ color: "#8a8296", fontSize: 12, marginBottom: 8 }}>First-time login — set your PIN</p>
+          <p style={{ color: "#c6972e", fontSize: 11, marginBottom: 16, lineHeight: 1.4 }}>
+            1) Temporary PIN from admin &nbsp;·&nbsp; 2) Your new PIN &nbsp;·&nbsp; 3) Confirm new PIN
+          </p>
 
+          <label style={{ display: "block", color: "#8a8296", fontSize: 11, textAlign: "left", marginBottom: 4 }}>
+            1. Temporary PIN (from admin)
+          </label>
           <input
-            type="password" inputMode="numeric" maxLength={4} placeholder="Temporary PIN"
+            type="password" inputMode="numeric" maxLength={4} placeholder="e.g. 1234"
             value={tempPin} onChange={(e) => /^\d{0,4}$/.test(e.target.value) && setTempPin(e.target.value)}
             style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid #444", marginBottom: 10, textAlign: "center", fontSize: 16 }}
           />
+          <label style={{ display: "block", color: "#8a8296", fontSize: 11, textAlign: "left", marginBottom: 4 }}>
+            2. New 4-digit PIN (your choice)
+          </label>
           <input
-            type="password" inputMode="numeric" maxLength={4} placeholder="New 4-digit PIN"
+            type="password" inputMode="numeric" maxLength={4} placeholder="New PIN"
             value={newPin} onChange={(e) => /^\d{0,4}$/.test(e.target.value) && setNewPin(e.target.value)}
             style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid #444", marginBottom: 10, textAlign: "center", fontSize: 16 }}
           />
+          <label style={{ display: "block", color: "#8a8296", fontSize: 11, textAlign: "left", marginBottom: 4 }}>
+            3. Confirm new PIN
+          </label>
           <input
-            type="password" inputMode="numeric" maxLength={4} placeholder="Confirm new PIN"
+            type="password" inputMode="numeric" maxLength={4} placeholder="Confirm PIN"
             value={confirmPin} onChange={(e) => /^\d{0,4}$/.test(e.target.value) && setConfirmPin(e.target.value)}
             style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid #444", marginBottom: 14, textAlign: "center", fontSize: 16 }}
           />
