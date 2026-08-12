@@ -1,10 +1,12 @@
 /**
  * Netlify Function: api/admin-create-user.js
  * SERVICE ROLE — never in client.
- * How new salesmen/roles actually get created.
+ * Creates auth.users + app_users in one call (no UUID copy-paste).
  *
- * Env: DEV_OVERRIDE_KEY (optional gate), SUPABASE_SERVICE_ROLE_KEY,
+ * Env: DEV_OVERRIDE_KEY (required), SUPABASE_SERVICE_ROLE_KEY,
  *      NEXT_PUBLIC_SUPABASE_URL | SUPABASE_URL
+ *
+ * Auth: header `x-dev-key` must equal DEV_OVERRIDE_KEY.
  */
 const { createClient } = require("@supabase/supabase-js");
 
@@ -16,10 +18,14 @@ exports.handler = async (event) => {
   }
 
   try {
-    // Gate with DEV_OVERRIDE_KEY when set (same secret as /__kwos_dev_console).
-    const body = JSON.parse(event.body || "{}");
+    const headers = event.headers || {};
+    const provided =
+      headers["x-dev-key"] ||
+      headers["X-Dev-Key"] ||
+      headers["X-DEV-KEY"] ||
+      "";
     const expected = process.env.DEV_OVERRIDE_KEY;
-    if (expected && body.key !== expected) {
+    if (!expected || provided !== expected) {
       return {
         statusCode: 401,
         headers: { "Content-Type": "application/json" },
@@ -27,11 +33,8 @@ exports.handler = async (event) => {
       };
     }
 
-    // TODO: also check that the caller is an authenticated 'admin' before
-    // proceeding (verify their Supabase session + role here) when used from
-    // the main app instead of the diagnostic console.
-
-    const { loginSlug, displayName, role, tempPin } = body;
+    const body = JSON.parse(event.body || "{}");
+    const { loginSlug, displayName, role, tempPin, sortOrder } = body;
     if (!loginSlug || !displayName || !role || !tempPin) {
       return {
         statusCode: 400,
@@ -73,13 +76,16 @@ exports.handler = async (event) => {
       };
     }
 
-    const { error: rowErr } = await supabaseAdmin.from("app_users").insert({
+    const row = {
       id: authUser.user.id,
       login_slug: loginSlug,
       display_name: displayName,
       role,
       pin_is_set: false,
-    });
+    };
+    if (typeof sortOrder === "number") row.sort_order = sortOrder;
+
+    const { error: rowErr } = await supabaseAdmin.from("app_users").insert(row);
     if (rowErr) {
       return {
         statusCode: 400,

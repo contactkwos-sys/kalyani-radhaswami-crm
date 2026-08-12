@@ -32,6 +32,7 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/auth");
   const isDevConsole =
     pathname.startsWith("/__kwos_dev_console") ||
+    pathname.startsWith("/__kwos_setup") ||
     pathname.startsWith("/api/dev-verify") ||
     pathname.startsWith("/api/admin-create-user") ||
     pathname.startsWith("/.netlify/functions/") ||

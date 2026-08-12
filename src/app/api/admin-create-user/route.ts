@@ -6,24 +6,27 @@ const PEPPER = "kwos-kalyani-radhaswami-2026";
 
 /**
  * Next.js mirror of api/admin-create-user.js (service role — never client).
- * Env: DEV_OVERRIDE_KEY, SUPABASE_SERVICE_ROLE_KEY
+ * Env: DEV_OVERRIDE_KEY, SUPABASE_SERVICE_ROLE_KEY,
+ *      NEXT_PUBLIC_SUPABASE_URL | SUPABASE_URL
+ * Auth: header `x-dev-key` must equal DEV_OVERRIDE_KEY.
  */
 export async function POST(request: Request) {
   try {
+    const provided = request.headers.get("x-dev-key") || "";
+    const expected = process.env.DEV_OVERRIDE_KEY;
+    if (!expected || provided !== expected) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = (await request.json()) as {
-      key?: string;
       loginSlug?: string;
       displayName?: string;
       role?: string;
       tempPin?: string;
+      sortOrder?: number;
     };
 
-    const expected = process.env.DEV_OVERRIDE_KEY;
-    if (expected && body.key !== expected) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { loginSlug, displayName, role, tempPin } = body;
+    const { loginSlug, displayName, role, tempPin, sortOrder } = body;
     if (!loginSlug || !displayName || !role || !tempPin) {
       return NextResponse.json(
         { error: "loginSlug, displayName, role, tempPin required" },
@@ -44,13 +47,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: authErr.message }, { status: 400 });
     }
 
-    const { error: rowErr } = await admin.from("app_users").insert({
+    const row: Record<string, unknown> = {
       id: authUser.user!.id,
       login_slug: loginSlug,
       display_name: displayName,
       role,
       pin_is_set: false,
-    });
+    };
+    if (typeof sortOrder === "number") row.sort_order = sortOrder;
+
+    const { error: rowErr } = await admin.from("app_users").insert(row);
     if (rowErr) {
       return NextResponse.json({ error: rowErr.message }, { status: 400 });
     }

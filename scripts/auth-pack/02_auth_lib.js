@@ -1,5 +1,5 @@
 // ============================================================================
-// 02_auth_lib.js
+// 02_auth_lib.js  (patched — listActiveUsers via list_login_users RPC)
 // PIN-only auth helpers. NO mobile number, NO OTP anywhere in this file.
 // Adjust the `import { supabase } from "..."` path to match your existing
 // Supabase client file in the repo.
@@ -21,10 +21,9 @@ function slugEmail(loginSlug) {
 
 /** Role tiles for the login screen. Safe columns only. */
 export async function listActiveUsers() {
-  const { data, error } = await supabase
-    .from("public_active_users")
-    .select("id, login_slug, display_name, role, pin_is_set")
-    .order("sort_order", { ascending: true });
+  // Uses SECURITY DEFINER RPC (list_login_users) so anon can load tiles
+  // without querying the view / table directly (RLS blocks that).
+  const { data, error } = await supabase.rpc("list_login_users");
   if (error) throw error;
   return data;
 }
