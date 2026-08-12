@@ -10,12 +10,13 @@ export function slugEmail(loginSlug: string) {
   return `${loginSlug}@internal.kwos.local`;
 }
 
-/** Central map — keep every role's home route here, one source of truth. */
+/** Central map — keep every role's home route here, one source of truth.
+ * All roles land on the real CRM dashboard (Kalyani / Radhaswami company switcher). */
 export const ROLE_HOME = {
-  admin: "/admin",
-  ceo: "/ceo",
-  accountant: "/accountant",
-  salesman: "/salesman",
+  admin: "/dashboard",
+  ceo: "/dashboard",
+  accountant: "/dashboard",
+  salesman: "/dashboard",
 } as const;
 
 export type LoginRole = keyof typeof ROLE_HOME;

@@ -34,6 +34,10 @@ export function CompanySwitcher({
         companies.find((c) => c.code === profile.company_scope)?.id ||
         "";
 
+  const canSelectAll = ["OWNER", "CEO_1", "CEO_2", "CEO_3", "ADMIN"].includes(
+    profile.role
+  );
+
   return (
     <label className="flex items-center gap-2 text-sm">
       <span className="text-[var(--muted)]">Company</span>
@@ -42,10 +46,9 @@ export function CompanySwitcher({
         value={current}
         disabled={pending}
         onChange={(e) => onChange(e.target.value)}
+        aria-label="Switch company (Kalyani or Radhaswami)"
       >
-        {profile.role === "OWNER" && (
-          <option value="ALL">All Companies</option>
-        )}
+        {canSelectAll && <option value="ALL">All Companies</option>}
         {companies.map((c) => (
           <option key={c.id} value={c.id}>
             {c.name}

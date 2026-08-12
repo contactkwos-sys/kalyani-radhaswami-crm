@@ -1,38 +1,14 @@
 import { ROLE_HOME, type LoginRole } from "@/lib/auth/pin-auth-shared";
 import type { AppRole } from "@/types/database";
 
-export type RoleHome =
-  | "/admin"
-  | "/ceo"
-  | "/accountant"
-  | "/salesman"
-  | "/dashboard";
+export type RoleHome = "/dashboard";
 
 export { ROLE_HOME };
 export type { LoginRole };
 
-/** Map CRM AppRole → login role home (server-side). */
-export function homeForRole(role: AppRole | string): RoleHome {
-  switch (role) {
-    case "OWNER":
-    case "ADMIN":
-    case "admin":
-      return ROLE_HOME.admin;
-    case "CEO_1":
-    case "CEO_2":
-    case "CEO_3":
-    case "ceo":
-      return ROLE_HOME.ceo;
-    case "ACCOUNTANT":
-    case "accountant":
-      return ROLE_HOME.accountant;
-    case "SALESMAN":
-    case "SALES_MANAGER":
-    case "salesman":
-      return ROLE_HOME.salesman;
-    default:
-      return "/dashboard";
-  }
+/** Map CRM AppRole → login role home (server-side). Always the real dashboard. */
+export function homeForRole(_role: AppRole | string): RoleHome {
+  return "/dashboard";
 }
 
 export function appRoleFromLoginRole(role: LoginRole | string): AppRole {

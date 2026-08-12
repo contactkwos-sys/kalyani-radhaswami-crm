@@ -5,10 +5,18 @@ import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth/session";
 import type { CompanyScope } from "@/types/database";
 
+const CAN_SELECT_ALL = new Set([
+  "OWNER",
+  "CEO_1",
+  "CEO_2",
+  "CEO_3",
+  "ADMIN",
+]);
+
 export async function setCompanyScope(scope: CompanyScope, companyId?: string) {
   const profile = await requireProfile();
-  if (profile.role !== "OWNER" && scope === "ALL") {
-    throw new Error("Only Owner can select All Companies");
+  if (scope === "ALL" && !CAN_SELECT_ALL.has(profile.role)) {
+    throw new Error("Only Owner / CEO / Admin can select All Companies");
   }
 
   const supabase = await createClient();

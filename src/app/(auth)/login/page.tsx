@@ -95,8 +95,13 @@ export default function RoleLoginPage() {
   };
 
   const goToRoleHome = async () => {
-    const role = await getMyRole();
-    router.replace(ROLE_HOME[role] || "/");
+    try {
+      const role = await getMyRole();
+      router.replace(ROLE_HOME[role] || "/dashboard");
+    } catch {
+      // Role RPC hiccup must not strand the user after a successful PIN login.
+      router.replace("/dashboard");
+    }
   };
 
   const submitPin = async (nextPin: string) => {
