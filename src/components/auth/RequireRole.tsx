@@ -62,7 +62,7 @@ export default function RequireRole({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "#8a8296",
+          color: "#3f524a",
         }}
       >
         Checking access…
