@@ -1,16 +1,19 @@
 /**
- * Netlify Function: api/admin-create-user.js
- * SERVICE ROLE — never in client.
- * Creates auth.users + app_users in one call (no UUID copy-paste).
+ * ============================================================================
+ * 10_admin_create_user.js
+ * Netlify function: api/admin-create-user.js
+ * Creates the Supabase Auth user AND the app_users row IN ONE CALL — this
+ * is what makes the setup wizard possible with zero UUID copy-paste.
+ * Protected by DEV_OVERRIDE_KEY so only the setup wizard (or you) can call it.
+ * ============================================================================
  *
- * Env: DEV_OVERRIDE_KEY (required), SUPABASE_SERVICE_ROLE_KEY,
+ * Env: DEV_OVERRIDE_KEY, SUPABASE_SERVICE_ROLE_KEY,
  *      NEXT_PUBLIC_SUPABASE_URL | SUPABASE_URL
- *
  * Auth: header `x-dev-key` must equal DEV_OVERRIDE_KEY.
  */
 const { createClient } = require("@supabase/supabase-js");
 
-const PEPPER = "kwos-kalyani-radhaswami-2026";
+const PEPPER = "kwos-kalyani-radhaswami-2026"; // must match the one in auth lib
 
 exports.handler = async (event) => {
   if (event.httpMethod !== "POST") {
@@ -19,13 +22,12 @@ exports.handler = async (event) => {
 
   try {
     const headers = event.headers || {};
-    const provided =
+    const key =
       headers["x-dev-key"] ||
       headers["X-Dev-Key"] ||
       headers["X-DEV-KEY"] ||
       "";
-    const expected = process.env.DEV_OVERRIDE_KEY;
-    if (!expected || provided !== expected) {
+    if (!key || key !== process.env.DEV_OVERRIDE_KEY) {
       return {
         statusCode: 401,
         headers: { "Content-Type": "application/json" },
@@ -33,15 +35,14 @@ exports.handler = async (event) => {
       };
     }
 
-    const body = JSON.parse(event.body || "{}");
-    const { loginSlug, displayName, role, tempPin, sortOrder } = body;
-    if (!loginSlug || !displayName || !role || !tempPin) {
+    const { loginSlug, displayName, role, tempPin } = JSON.parse(
+      event.body || "{}"
+    );
+    if (!loginSlug || !displayName || !role || !/^\d{4}$/.test(tempPin || "")) {
       return {
         statusCode: 400,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          error: "loginSlug, displayName, role, tempPin required",
-        }),
+        body: JSON.stringify({ error: "Missing or invalid fields" }),
       };
     }
 
@@ -76,43 +77,22 @@ exports.handler = async (event) => {
       };
     }
 
-    const row = {
+    const { error: rowErr } = await supabaseAdmin.from("app_users").insert({
       id: authUser.user.id,
       login_slug: loginSlug,
       display_name: displayName,
       role,
       pin_is_set: false,
-    };
-    if (typeof sortOrder === "number") row.sort_order = sortOrder;
-
-    const { error: rowErr } = await supabaseAdmin.from("app_users").insert(row);
+    });
     if (rowErr) {
+      // roll back the auth user so a retry doesn't collide
+      await supabaseAdmin.auth.admin.deleteUser(authUser.user.id);
       return {
         statusCode: 400,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ error: rowErr.message }),
       };
     }
-
-    // Keep CRM profile in sync for existing modules.
-    const crmRole =
-      role === "admin"
-        ? "ADMIN"
-        : role === "ceo"
-          ? "CEO_1"
-          : role === "accountant"
-            ? "ACCOUNTANT"
-            : role === "salesman"
-              ? "SALESMAN"
-              : "VIEWER";
-    await supabaseAdmin.from("crm_profiles").upsert({
-      id: authUser.user.id,
-      email: `${loginSlug}@internal.kwos.local`,
-      full_name: displayName,
-      role: crmRole,
-      is_active: true,
-      company_scope: "ALL",
-    });
 
     return {
       statusCode: 200,

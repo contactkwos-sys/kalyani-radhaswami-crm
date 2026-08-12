@@ -1,44 +1,41 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/admin";
-import { appRoleFromLoginRole } from "@/lib/auth/role-login";
 
-const PEPPER = "kwos-kalyani-radhaswami-2026";
+const PEPPER = "kwos-kalyani-radhaswami-2026"; // must match the one in auth lib
 
 /**
- * Next.js mirror of api/admin-create-user.js (service role — never client).
+ * Next.js mirror of api/admin-create-user.js (10_admin_create_user.js).
+ * Creates auth.users + app_users in one call. Rolls back auth user on insert fail.
  * Env: DEV_OVERRIDE_KEY, SUPABASE_SERVICE_ROLE_KEY,
  *      NEXT_PUBLIC_SUPABASE_URL | SUPABASE_URL
  * Auth: header `x-dev-key` must equal DEV_OVERRIDE_KEY.
  */
 export async function POST(request: Request) {
   try {
-    const provided = request.headers.get("x-dev-key") || "";
-    const expected = process.env.DEV_OVERRIDE_KEY;
-    if (!expected || provided !== expected) {
+    const key = request.headers.get("x-dev-key");
+    if (!key || key !== process.env.DEV_OVERRIDE_KEY) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = (await request.json()) as {
+    const { loginSlug, displayName, role, tempPin } = (await request.json()) as {
       loginSlug?: string;
       displayName?: string;
       role?: string;
       tempPin?: string;
-      sortOrder?: number;
     };
 
-    const { loginSlug, displayName, role, tempPin, sortOrder } = body;
-    if (!loginSlug || !displayName || !role || !tempPin) {
+    if (!loginSlug || !displayName || !role || !/^\d{4}$/.test(tempPin || "")) {
       return NextResponse.json(
-        { error: "loginSlug, displayName, role, tempPin required" },
+        { error: "Missing or invalid fields" },
         { status: 400 }
       );
     }
 
     const password = `${tempPin}-${loginSlug}-${PEPPER}`;
-    const admin = createServiceClient();
+    const supabaseAdmin = createServiceClient();
 
     const { data: authUser, error: authErr } =
-      await admin.auth.admin.createUser({
+      await supabaseAdmin.auth.admin.createUser({
         email: `${loginSlug}@internal.kwos.local`,
         password,
         email_confirm: true,
@@ -47,28 +44,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: authErr.message }, { status: 400 });
     }
 
-    const row: Record<string, unknown> = {
+    const { error: rowErr } = await supabaseAdmin.from("app_users").insert({
       id: authUser.user!.id,
       login_slug: loginSlug,
       display_name: displayName,
       role,
       pin_is_set: false,
-    };
-    if (typeof sortOrder === "number") row.sort_order = sortOrder;
-
-    const { error: rowErr } = await admin.from("app_users").insert(row);
+    });
     if (rowErr) {
+      // roll back the auth user so a retry doesn't collide
+      await supabaseAdmin.auth.admin.deleteUser(authUser.user!.id);
       return NextResponse.json({ error: rowErr.message }, { status: 400 });
     }
-
-    await admin.from("crm_profiles").upsert({
-      id: authUser.user!.id,
-      email: `${loginSlug}@internal.kwos.local`,
-      full_name: displayName,
-      role: appRoleFromLoginRole(role),
-      is_active: true,
-      company_scope: "ALL",
-    });
 
     return NextResponse.json({ ok: true, id: authUser.user!.id });
   } catch (e) {
