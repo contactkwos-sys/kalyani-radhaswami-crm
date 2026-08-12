@@ -54,6 +54,12 @@ export interface Profile {
   is_active: boolean;
   preferred_company_id: string | null;
   company_scope: CompanyScope;
+  /** Protected primary Owner — cannot be deleted/demoted via normal UI. */
+  is_primary_owner?: boolean;
+  /** Owner/Developer flag for elevated override operations. */
+  is_developer?: boolean;
+  deactivated_at?: string | null;
+  deactivated_by?: string | null;
   created_at: string;
   updated_at: string;
 }

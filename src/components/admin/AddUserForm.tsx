@@ -1,0 +1,164 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+
+const ROLES = [
+  "ADMIN",
+  "SALES_MANAGER",
+  "SALESMAN",
+  "ACCOUNTANT",
+  "VIEWER",
+] as const;
+
+export function AddUserForm({
+  actorIsDeveloper,
+  overrideConfigured,
+}: {
+  actorIsDeveloper: boolean;
+  overrideConfigured: boolean;
+}) {
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [role, setRole] = useState<string>("SALESMAN");
+  const [mobile, setMobile] = useState("");
+  const [pin, setPin] = useState("");
+  const [companyScope, setCompanyScope] = useState("KALYANI");
+  const [overrideKey, setOverrideKey] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setPending(true);
+    setError(null);
+    setMessage(null);
+    try {
+      if (!window.confirm(`Create user ${fullName} as ${role}?`)) {
+        setPending(false);
+        return;
+      }
+      const res = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          fullName,
+          role,
+          mobile: mobile || undefined,
+          pin: pin || undefined,
+          companyScope,
+          confirm: true,
+          developerOverrideKey: overrideKey || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to create user");
+      setMessage("User created.");
+      setEmail("");
+      setFullName("");
+      setMobile("");
+      setPin("");
+      setOverrideKey("");
+      router.refresh();
+      if (data.userId) {
+        router.push(`/settings/users/${data.userId}/security`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <form
+      onSubmit={onSubmit}
+      className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 space-y-3 max-w-lg"
+    >
+      <h3 className="font-semibold">Add user</h3>
+      <input
+        required
+        type="text"
+        placeholder="Full name"
+        value={fullName}
+        onChange={(e) => setFullName(e.target.value)}
+        className="w-full rounded-md border border-[var(--border)] px-3 py-2 text-sm"
+      />
+      <input
+        required
+        type="email"
+        placeholder="Email (session identity)"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        className="w-full rounded-md border border-[var(--border)] px-3 py-2 text-sm"
+      />
+      <select
+        value={role}
+        onChange={(e) => setRole(e.target.value)}
+        className="w-full rounded-md border border-[var(--border)] px-3 py-2 text-sm"
+      >
+        {ROLES.map((r) => (
+          <option key={r} value={r}>
+            {r}
+          </option>
+        ))}
+        {actorIsDeveloper && <option value="OWNER">OWNER</option>}
+      </select>
+      <select
+        value={companyScope}
+        onChange={(e) => setCompanyScope(e.target.value)}
+        className="w-full rounded-md border border-[var(--border)] px-3 py-2 text-sm"
+      >
+        <option value="KALYANI">Kalyani</option>
+        <option value="RADHASWAMI">Radhaswami</option>
+        <option value="ALL">All companies</option>
+      </select>
+      <input
+        type="tel"
+        placeholder="Mobile (for PIN login)"
+        value={mobile}
+        onChange={(e) => setMobile(e.target.value)}
+        className="w-full rounded-md border border-[var(--border)] px-3 py-2 text-sm"
+      />
+      <input
+        type="password"
+        inputMode="numeric"
+        maxLength={8}
+        placeholder="Temporary PIN (optional)"
+        value={pin}
+        onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 8))}
+        className="w-full rounded-md border border-[var(--border)] px-3 py-2 text-sm"
+      />
+      {actorIsDeveloper && overrideConfigured && (
+        <input
+          type="password"
+          autoComplete="off"
+          placeholder="Developer Override (required to create Owner)"
+          value={overrideKey}
+          onChange={(e) => setOverrideKey(e.target.value)}
+          className="w-full rounded-md border border-amber-300 px-3 py-2 text-sm"
+        />
+      )}
+      {error && (
+        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">
+          {error}
+        </p>
+      )}
+      {message && (
+        <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          {message}
+        </p>
+      )}
+      <button
+        type="submit"
+        disabled={pending}
+        className="rounded-md bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+      >
+        {pending ? "Creating…" : "Create user"}
+      </button>
+    </form>
+  );
+}

@@ -70,6 +70,8 @@ async function main() {
     role: "OWNER",
     is_active: true,
     company_scope: "ALL",
+    is_primary_owner: true,
+    is_developer: true,
   });
   if (upsertError) throw upsertError;
 

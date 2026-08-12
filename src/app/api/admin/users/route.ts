@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { requireProfile } from "@/lib/auth/session";
 import { listUsersForAdmin } from "@/lib/auth/mobile-login";
-import { ROLE_PERMISSIONS } from "@/types/database";
+import { ROLE_PERMISSIONS, type AppRole, type CompanyScope } from "@/types/database";
+import {
+  loadDeveloperProfile,
+  verifyDeveloperOverride,
+} from "@/lib/security/developer-override";
+import { createCrmUser, isManageableRole } from "@/lib/security/user-admin";
 
 export async function GET() {
   try {
@@ -11,6 +17,98 @@ export async function GET() {
     }
     const users = await listUsersForAdmin();
     return NextResponse.json({ users });
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+}
+
+const createSchema = z.object({
+  email: z.string().email(),
+  fullName: z.string().min(1).max(120),
+  role: z.string(),
+  mobile: z.string().optional(),
+  pin: z.string().optional(),
+  companyScope: z.enum(["KALYANI", "RADHASWAMI", "ALL"]).optional(),
+  developerOverrideKey: z.string().optional(),
+  confirm: z.boolean().optional(),
+});
+
+export async function POST(request: Request) {
+  try {
+    const profile = await requireProfile();
+    if (!ROLE_PERMISSIONS[profile.role].canManageUsers) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const parsed = createSchema.safeParse(await request.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+    }
+    const body = parsed.data;
+    if (!isManageableRole(body.role)) {
+      return NextResponse.json({ error: "Invalid role." }, { status: 400 });
+    }
+
+    // Creating OWNER always requires Developer Override
+    const creatingOwner = body.role === "OWNER";
+    let actor = await loadDeveloperProfile(profile.id);
+    if (!actor) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    if (creatingOwner || profile.role === "OWNER") {
+      const verified = await verifyDeveloperOverride({
+        operation: "ADD_USER",
+        overrideKey: creatingOwner
+          ? body.developerOverrideKey
+          : body.developerOverrideKey || undefined,
+        forceOverride: creatingOwner,
+      });
+      // Owner/Developer preferred for add-user; ADMIN may add non-owner without override
+      if (creatingOwner) {
+        if (!verified.ok) {
+          return NextResponse.json(
+            { error: verified.error, code: verified.code },
+            { status: 403 }
+          );
+        }
+        actor = verified.actor;
+      } else if (profile.role === "OWNER" && actor.is_developer) {
+        // Optional override confirmation for Owner/Developer creating users
+        if (body.developerOverrideKey) {
+          if (!verified.ok) {
+            return NextResponse.json(
+              { error: verified.error, code: verified.code },
+              { status: 403 }
+            );
+          }
+          actor = verified.actor;
+        }
+      } else if (profile.role !== "OWNER" && profile.role !== "ADMIN") {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    }
+
+    if (!body.confirm) {
+      return NextResponse.json(
+        { error: "Confirmation required.", code: "CONFIRM_REQUIRED" },
+        { status: 400 }
+      );
+    }
+
+    const result = await createCrmUser({
+      actor,
+      email: body.email,
+      fullName: body.fullName,
+      role: body.role as AppRole,
+      mobile: body.mobile,
+      pin: body.pin,
+      companyScope: body.companyScope as CompanyScope | undefined,
+    });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: 400 });
+    }
+    return NextResponse.json({ ok: true, userId: result.userId });
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

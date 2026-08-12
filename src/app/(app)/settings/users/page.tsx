@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { AddUserForm } from "@/components/admin/AddUserForm";
 import { getCurrentProfile } from "@/lib/auth/session";
 import { listUsersForAdmin } from "@/lib/auth/mobile-login";
+import {
+  isOverrideConfigured,
+  loadDeveloperProfile,
+} from "@/lib/security/developer-override";
 import { ROLE_PERMISSIONS } from "@/types/database";
 
 export default async function UsersManagementPage() {
@@ -10,21 +15,48 @@ export default async function UsersManagementPage() {
   if (!ROLE_PERMISSIONS[profile.role].canManageUsers) redirect("/dashboard");
 
   const users = await listUsersForAdmin();
+  const actor = await loadDeveloperProfile(profile.id);
+  const actorIsDeveloper = Boolean(
+    actor?.role === "OWNER" && actor.is_developer
+  );
 
   return (
     <div className="space-y-6">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--accent)]">
-          Settings → User Management
-        </p>
-        <h2 className="font-[family-name:var(--font-display)] text-3xl font-semibold">
-          Users
-        </h2>
-        <p className="mt-1 text-sm text-[var(--muted)]">
-          Manage mobile login, PIN reset, enable/disable, and remembered
-          devices. Open Security for each user.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--accent)]">
+            Settings → User Management
+          </p>
+          <h2 className="font-[family-name:var(--font-display)] text-3xl font-semibold">
+            Users
+          </h2>
+          <p className="mt-1 text-sm text-[var(--muted)]">
+            Manage users, roles, mobile + PIN login, sessions, and devices.
+            Destructive actions require Owner/Developer Override confirmation.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-3 text-sm">
+          <Link
+            href="/settings/audit-logs"
+            className="font-semibold text-[var(--accent)] hover:underline"
+          >
+            Security / audit logs
+          </Link>
+          {actorIsDeveloper && (
+            <Link
+              href="/settings/security"
+              className="font-semibold text-[var(--accent)] hover:underline"
+            >
+              Security settings
+            </Link>
+          )}
+        </div>
       </div>
+
+      <AddUserForm
+        actorIsDeveloper={actorIsDeveloper}
+        overrideConfigured={isOverrideConfigured()}
+      />
 
       <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--surface)]">
         <table className="min-w-full text-left text-sm">
@@ -46,6 +78,9 @@ export default async function UsersManagementPage() {
                 <td className="px-4 py-3">
                   <p className="font-medium">{u.full_name}</p>
                   <p className="text-xs text-[var(--muted)]">{u.email}</p>
+                  {u.is_primary_owner ? (
+                    <p className="text-xs text-amber-800">Primary Owner</p>
+                  ) : null}
                 </td>
                 <td className="px-4 py-3">{u.role}</td>
                 <td className="px-4 py-3">{u.mobile_number || "—"}</td>

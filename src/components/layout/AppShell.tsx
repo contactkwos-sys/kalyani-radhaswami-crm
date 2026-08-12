@@ -27,10 +27,11 @@ const NAV = [
   { href: "/settings/intelligence", label: "Intelligence", ownerAdmin: true },
   { href: "/settings/backup", label: "Backup", ownerAdmin: true },
   { href: "/settings/users", label: "Users", ownerAdmin: true },
+  { href: "/settings/audit-logs", label: "Audit", ownerAdmin: true },
   { href: "/settings/account", label: "My PIN" },
   { href: "/settings/company", label: "Company" },
   { href: "/settings/license", label: "License" },
-  { href: "/settings/security", label: "Owner PIN", ownerOnly: true },
+  { href: "/settings/security", label: "Security", ownerOnly: true },
 ];
 
 export function AppShell({

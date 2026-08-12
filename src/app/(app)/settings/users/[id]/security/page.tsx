@@ -3,6 +3,10 @@ import { notFound, redirect } from "next/navigation";
 import { UserSecurityPanel } from "@/components/admin/UserSecurityPanel";
 import { getCurrentProfile } from "@/lib/auth/session";
 import { listDevicesForUser } from "@/lib/auth/mobile-login";
+import {
+  isOverrideConfigured,
+  loadDeveloperProfile,
+} from "@/lib/security/developer-override";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { ROLE_PERMISSIONS } from "@/types/database";
 
@@ -19,7 +23,9 @@ export default async function UserSecurityPage({
   const admin = createServiceClient();
   const { data: user } = await admin
     .from("crm_profiles")
-    .select("id, email, full_name, mobile, role, is_active")
+    .select(
+      "id, email, full_name, mobile, role, is_active, is_primary_owner, is_developer"
+    )
     .eq("id", id)
     .maybeSingle();
   if (!user) notFound();
@@ -31,6 +37,7 @@ export default async function UserSecurityPage({
     .maybeSingle();
 
   const devices = await listDevicesForUser(id);
+  const actor = await loadDeveloperProfile(profile.id);
 
   return (
     <div className="space-y-6">
@@ -58,9 +65,19 @@ export default async function UserSecurityPage({
           mobile_number: login?.mobile_number || user.mobile,
           last_login_at: login?.last_login_at || null,
           pin_updated_at: login?.pin_updated_at || null,
+          locked_until: login?.locked_until || null,
           has_pin: Boolean(login),
+          is_primary_owner: Boolean(user.is_primary_owner),
+          is_developer: Boolean(user.is_developer),
         }}
         devices={devices as never}
+        security={{
+          overrideConfigured: isOverrideConfigured(),
+          actorIsDeveloper: Boolean(
+            actor?.role === "OWNER" && actor.is_developer
+          ),
+          isPrimaryOwner: Boolean(user.is_primary_owner),
+        }}
       />
     </div>
   );

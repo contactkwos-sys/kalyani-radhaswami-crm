@@ -58,6 +58,10 @@ export function stripPinMetadata(metadata: Record<string, unknown>) {
     "password",
     "token",
     "device_token",
+    "DEVELOPER_OVERRIDE_KEY",
+    "developer_override_key",
+    "override_key",
+    "OWNER_OVERRIDE_PIN",
   ]) {
     delete clone[k];
   }
