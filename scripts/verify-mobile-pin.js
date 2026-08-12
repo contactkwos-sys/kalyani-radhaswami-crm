@@ -29,7 +29,7 @@ loadEnvFile(path.join(__dirname, "..", ".env.local"));
 
 const URL =
   process.env.NEXT_PUBLIC_SUPABASE_URL ||
-  "https://ixulyhomqtajenigopai.supabase.co";
+  "https://pelwnhukierrqienpveb.supabase.co";
 const SERVICE =
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
 

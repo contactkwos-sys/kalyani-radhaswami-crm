@@ -12,11 +12,15 @@ const { createClient } = require("@supabase/supabase-js");
 
 const PEPPER = "kwos-kalyani-radhaswami-2026";
 const URL =
+  process.env.KALYANI_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.SUPABASE_URL ||
-  "https://ixulyhomqtajenigopai.supabase.co";
+  "https://pelwnhukierrqienpveb.supabase.co";
 const SERVICE =
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
+  process.env.KALYANI_SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.KALYANI_SUPABASE_SECRET_KEY ||
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.SUPABASE_SECRET_KEY;
 
 const TILES = [
   {
