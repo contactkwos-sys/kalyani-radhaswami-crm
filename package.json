@@ -13,7 +13,11 @@
     "verify:phase123": "node scripts/verify-phase123.js",
     "verify:phase4": "node scripts/verify-phase4.js",
     "verify:phase5": "node scripts/verify-phase5.js",
-    "verify:phase6": "node scripts/verify-phase6.js"
+    "verify:phase6": "node scripts/verify-phase6.js",
+    "verify:mobile-pin": "node scripts/verify-mobile-pin.js",
+    "verify:developer-override": "node scripts/verify-developer-override.js",
+    "test:unit": "node --test scripts/unit/*.test.js",
+    "test:auth": "npm run test:unit && npm run verify:mobile-pin && npm run verify:developer-override"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

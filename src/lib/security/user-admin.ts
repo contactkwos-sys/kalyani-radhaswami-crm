@@ -1,0 +1,530 @@
+import { createServiceClient } from "@/lib/supabase/admin";
+import {
+  hashPin,
+  isValidPin,
+  normalizeMobile,
+  stripPinMetadata,
+} from "@/lib/auth/pin";
+import {
+  revokeAllDevicesAndSessions,
+} from "@/lib/auth/mobile-login";
+import {
+  assertCanModifyPrimaryOwner,
+  loadDeveloperProfile,
+  requestClientInfo,
+  writeDeveloperAudit,
+  type DeveloperOperation,
+  type DeveloperProfile,
+} from "@/lib/security/developer-override";
+import type { AppRole, CompanyScope, Profile } from "@/types/database";
+
+const MANAGEABLE_ROLES: AppRole[] = [
+  "ADMIN",
+  "SALES_MANAGER",
+  "SALESMAN",
+  "ACCOUNTANT",
+  "VIEWER",
+];
+
+export function isManageableRole(role: string): role is AppRole {
+  return (MANAGEABLE_ROLES as string[]).includes(role) || role === "OWNER";
+}
+
+async function auditAdmin(
+  actorId: string,
+  action: string,
+  targetUserId: string | null,
+  metadata: Record<string, unknown> = {},
+  success = true
+) {
+  const { ipAddress, userAgent } = await requestClientInfo();
+  const admin = createServiceClient();
+  await admin.from("crm_audit_logs").insert({
+    user_id: actorId,
+    action,
+    module: "user_management",
+    record_type: "crm_profiles",
+    record_id: targetUserId || actorId,
+    metadata: stripPinMetadata({
+      ...metadata,
+      success,
+      target_user: targetUserId || undefined,
+    }),
+    ip_address: ipAddress,
+    user_agent: userAgent,
+  });
+}
+
+export async function createCrmUser(input: {
+  actor: DeveloperProfile;
+  email: string;
+  fullName: string;
+  role: AppRole;
+  mobile?: string;
+  pin?: string;
+  companyScope?: CompanyScope;
+  temporaryPassword?: string;
+}): Promise<{ ok: true; userId: string } | { ok: false; error: string }> {
+  const email = input.email.trim().toLowerCase();
+  if (!email || !email.includes("@")) {
+    return { ok: false, error: "Valid email is required." };
+  }
+  if (!input.fullName.trim()) {
+    return { ok: false, error: "Full name is required." };
+  }
+  if (input.role === "OWNER" && !input.actor.is_developer) {
+    return { ok: false, error: "Only Owner/Developer can create Owner accounts." };
+  }
+
+  const admin = createServiceClient();
+  const password =
+    input.temporaryPassword ||
+    `Tmp!${Math.random().toString(36).slice(2)}${Date.now().toString(36)}A1`;
+
+  const { data, error } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: {
+      app: "crm",
+      crm: "true",
+      role: input.role,
+      full_name: input.fullName.trim(),
+    },
+  });
+  if (error || !data.user) {
+    return { ok: false, error: error?.message || "Failed to create auth user." };
+  }
+
+  const userId = data.user.id;
+  const mobile = input.mobile ? normalizeMobile(input.mobile) : null;
+
+  const { error: profileErr } = await admin.from("crm_profiles").upsert({
+    id: userId,
+    email,
+    full_name: input.fullName.trim(),
+    mobile,
+    role: input.role,
+    is_active: true,
+    company_scope: input.companyScope || "KALYANI",
+    is_primary_owner: false,
+    is_developer: false,
+  });
+  if (profileErr) {
+    await admin.auth.admin.deleteUser(userId);
+    return { ok: false, error: profileErr.message };
+  }
+
+  if (mobile && input.pin && isValidPin(input.pin)) {
+    const pin_hash = await hashPin(input.pin);
+    const { error: loginErr } = await admin.from("crm_user_login").upsert({
+      user_id: userId,
+      mobile_number: mobile,
+      pin_hash,
+      pin_updated_at: new Date().toISOString(),
+      failed_attempts: 0,
+      locked_until: null,
+    });
+    if (loginErr) {
+      await auditAdmin(input.actor.id, "USER_CREATED_PARTIAL", userId, {
+        reason: loginErr.message,
+      }, false);
+      return { ok: false, error: loginErr.message };
+    }
+  }
+
+  // Grant company access for non-owner roles to preferred companies when ALL/scope
+  const { data: companies } = await admin.from("crm_companies").select("id, code");
+  const scope = input.companyScope || "KALYANI";
+  for (const c of companies || []) {
+    if (scope === "ALL" || scope === c.code || input.role === "OWNER") {
+      await admin.from("crm_user_company_access").upsert(
+        {
+          user_id: userId,
+          company_id: c.id,
+          role: input.role,
+          is_active: true,
+        },
+        { onConflict: "user_id,company_id" }
+      );
+    }
+  }
+
+  await auditAdmin(input.actor.id, "USER_CREATED", userId, {
+    role: input.role,
+    email,
+    has_pin: Boolean(mobile && input.pin),
+  });
+  await writeDeveloperAudit({
+    actorId: input.actor.id,
+    action: "ADD_USER",
+    targetUserId: userId,
+    operation: "ADD_USER",
+    success: true,
+    metadata: { role: input.role },
+  });
+
+  return { ok: true, userId };
+}
+
+export async function changeUserRole(input: {
+  actor: DeveloperProfile;
+  userId: string;
+  newRole: AppRole;
+  overrideVerified: boolean;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const target = await loadDeveloperProfile(input.userId);
+  if (!target) return { ok: false, error: "User not found." };
+
+  const protect = assertCanModifyPrimaryOwner({
+    actor: input.actor,
+    target,
+    operation: "CHANGE_ROLE",
+    overrideVerified: input.overrideVerified,
+  });
+  if (!protect.ok) return protect;
+
+  if (target.is_primary_owner && input.newRole !== "OWNER") {
+    return {
+      ok: false,
+      error: "Primary Owner cannot be demoted through normal UI.",
+    };
+  }
+
+  if (input.newRole === "OWNER" && !input.overrideVerified) {
+    return {
+      ok: false,
+      error: "Promoting to Owner requires Developer Override confirmation.",
+    };
+  }
+
+  const admin = createServiceClient();
+  const { error } = await admin
+    .from("crm_profiles")
+    .update({ role: input.newRole })
+    .eq("id", input.userId);
+  if (error) return { ok: false, error: error.message };
+
+  await auditAdmin(input.actor.id, "USER_ROLE_CHANGED", input.userId, {
+    previous_role: target.role,
+    new_role: input.newRole,
+  });
+  return { ok: true };
+}
+
+export async function setUserActiveState(input: {
+  actor: DeveloperProfile | Profile;
+  userId: string;
+  isActive: boolean;
+  overrideVerified?: boolean;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const target = await loadDeveloperProfile(input.userId);
+  if (!target) return { ok: false, error: "User not found." };
+
+  if (target.is_primary_owner && !input.isActive) {
+    return {
+      ok: false,
+      error: "Primary Owner cannot be deactivated through the normal UI.",
+    };
+  }
+
+  const admin = createServiceClient();
+  const patch: Record<string, unknown> = {
+    is_active: input.isActive,
+    deactivated_at: input.isActive ? null : new Date().toISOString(),
+    deactivated_by: input.isActive ? null : input.actor.id,
+  };
+  const { error } = await admin
+    .from("crm_profiles")
+    .update(patch)
+    .eq("id", input.userId);
+  if (error) return { ok: false, error: error.message };
+
+  if (!input.isActive) {
+    await revokeAllDevicesAndSessions(
+      input.userId,
+      input.actor.id,
+      "USER_DISABLED"
+    );
+  }
+
+  await auditAdmin(
+    input.actor.id,
+    input.isActive ? "USER_ENABLED" : "USER_DISABLED",
+    input.userId,
+    {}
+  );
+  return { ok: true };
+}
+
+/** Soft-delete: deactivate + revoke. Hard delete of auth user only with override and never for primary owner. */
+export async function deleteUserAccount(input: {
+  actor: DeveloperProfile;
+  userId: string;
+  hardDelete: boolean;
+  overrideVerified: boolean;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const target = await loadDeveloperProfile(input.userId);
+  if (!target) return { ok: false, error: "User not found." };
+
+  if (target.is_primary_owner) {
+    return {
+      ok: false,
+      error: "Primary Owner cannot be deleted. Use Owner recovery procedure.",
+    };
+  }
+  if (target.id === input.actor.id) {
+    return { ok: false, error: "You cannot delete your own account." };
+  }
+  if (!input.overrideVerified) {
+    return {
+      ok: false,
+      error: "Developer Override confirmation is required to delete a user.",
+    };
+  }
+
+  await setUserActiveState({
+    actor: input.actor,
+    userId: input.userId,
+    isActive: false,
+    overrideVerified: true,
+  });
+
+  const admin = createServiceClient();
+  if (input.hardDelete) {
+    await admin.from("crm_user_login").delete().eq("user_id", input.userId);
+    await admin.from("crm_auth_devices").delete().eq("user_id", input.userId);
+    await admin.from("crm_user_company_access").delete().eq("user_id", input.userId);
+    const { error } = await admin.auth.admin.deleteUser(input.userId);
+    if (error) return { ok: false, error: error.message };
+    // profile cascades from auth.users
+  }
+
+  await auditAdmin(input.actor.id, "USER_DELETED", input.userId, {
+    hard_delete: input.hardDelete,
+  });
+  await writeDeveloperAudit({
+    actorId: input.actor.id,
+    action: "DELETE_USER",
+    targetUserId: input.userId,
+    operation: "DELETE_USER",
+    success: true,
+    metadata: { hard_delete: input.hardDelete },
+  });
+  return { ok: true };
+}
+
+export async function unlockUserAccount(input: {
+  actor: DeveloperProfile | Profile;
+  userId: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const admin = createServiceClient();
+  const { error } = await admin
+    .from("crm_user_login")
+    .update({
+      failed_attempts: 0,
+      locked_until: null,
+    })
+    .eq("user_id", input.userId);
+  if (error) return { ok: false, error: error.message };
+
+  await auditAdmin(input.actor.id, "USER_UNLOCKED", input.userId, {});
+  await writeDeveloperAudit({
+    actorId: input.actor.id,
+    action: "OVERRIDE_LOCKED_USER",
+    targetUserId: input.userId,
+    operation: "OVERRIDE_LOCKED_USER",
+    success: true,
+  });
+  return { ok: true };
+}
+
+export async function ownerResetUserPin(input: {
+  actor: DeveloperProfile | Profile;
+  userId: string;
+  newPin: string;
+  mobile?: string;
+  operation?: DeveloperOperation;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!isValidPin(input.newPin)) {
+    return { ok: false, error: "PIN must be 4–8 digits." };
+  }
+
+  const target = await loadDeveloperProfile(input.userId);
+  if (!target) return { ok: false, error: "User not found." };
+
+  const admin = createServiceClient();
+  const { data: existing } = await admin
+    .from("crm_user_login")
+    .select("user_id, mobile_number")
+    .eq("user_id", input.userId)
+    .maybeSingle();
+
+  const mobile =
+    normalizeMobile(input.mobile || "") ||
+    existing?.mobile_number ||
+    normalizeMobile(target.mobile || "") ||
+    null;
+  if (!mobile) {
+    return {
+      ok: false,
+      error: "Set a mobile number for this user before assigning a PIN.",
+    };
+  }
+
+  const { data: clash } = await admin
+    .from("crm_user_login")
+    .select("user_id")
+    .eq("mobile_number", mobile)
+    .neq("user_id", input.userId)
+    .maybeSingle();
+  if (clash) return { ok: false, error: "This mobile number is already in use." };
+
+  const pin_hash = await hashPin(input.newPin);
+  const now = new Date().toISOString();
+
+  if (existing) {
+    const { error } = await admin
+      .from("crm_user_login")
+      .update({
+        mobile_number: mobile,
+        pin_hash,
+        pin_updated_at: now,
+        failed_attempts: 0,
+        locked_until: null,
+      })
+      .eq("user_id", input.userId);
+    if (error) return { ok: false, error: error.message };
+  } else {
+    const { error } = await admin.from("crm_user_login").insert({
+      user_id: input.userId,
+      mobile_number: mobile,
+      pin_hash,
+      pin_updated_at: now,
+    });
+    if (error) return { ok: false, error: error.message };
+  }
+
+  await admin.from("crm_profiles").update({ mobile }).eq("id", input.userId);
+
+  // Invalidate remembered devices + global Supabase sessions
+  await revokeAllDevicesAndSessions(
+    input.userId,
+    input.actor.id,
+    "OWNER_PIN_RESET"
+  );
+
+  await auditAdmin(input.actor.id, "OWNER_PIN_RESET", input.userId, {
+    pin_updated_at: now,
+  });
+  await writeDeveloperAudit({
+    actorId: input.actor.id,
+    action: input.operation || "RESET_PIN",
+    targetUserId: input.userId,
+    operation: input.operation || "RESET_PIN",
+    success: true,
+    metadata: { pin_updated_at: now },
+  });
+
+  return { ok: true };
+}
+
+export async function listAuditLogs(opts: {
+  limit?: number;
+  module?: string;
+}) {
+  const admin = createServiceClient();
+  let q = admin
+    .from("crm_audit_logs")
+    .select(
+      "id, company_id, user_id, action, module, record_type, record_id, metadata, ip_address, user_agent, created_at"
+    )
+    .order("created_at", { ascending: false })
+    .limit(opts.limit || 100);
+  if (opts.module) q = q.eq("module", opts.module);
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+export async function getSecuritySettings() {
+  const admin = createServiceClient();
+  const { data } = await admin
+    .from("crm_app_settings")
+    .select("key, value, updated_at")
+    .is("company_id", null)
+    .in("key", ["security_role_permissions", "security_lockout_policy"]);
+  const map: Record<string, string> = {};
+  for (const row of data || []) map[row.key] = row.value;
+  return {
+    rolePermissions: safeJson(map.security_role_permissions, {}),
+    lockoutPolicy: safeJson(map.security_lockout_policy, {
+      max_failed_attempts: 5,
+      lockout_minutes: 15,
+    }),
+  };
+}
+
+async function upsertGlobalSetting(
+  key: string,
+  value: string,
+  updatedBy: string
+) {
+  const admin = createServiceClient();
+  const { data: existing } = await admin
+    .from("crm_app_settings")
+    .select("id")
+    .is("company_id", null)
+    .eq("key", key)
+    .maybeSingle();
+  if (existing?.id) {
+    await admin
+      .from("crm_app_settings")
+      .update({ value, updated_by: updatedBy })
+      .eq("id", existing.id);
+  } else {
+    await admin.from("crm_app_settings").insert({
+      company_id: null,
+      key,
+      value,
+      is_public: false,
+      updated_by: updatedBy,
+    });
+  }
+}
+
+export async function updateSecuritySettings(input: {
+  actor: DeveloperProfile;
+  rolePermissions?: unknown;
+  lockoutPolicy?: unknown;
+}) {
+  if (input.rolePermissions !== undefined) {
+    await upsertGlobalSetting(
+      "security_role_permissions",
+      JSON.stringify(input.rolePermissions),
+      input.actor.id
+    );
+  }
+  if (input.lockoutPolicy !== undefined) {
+    await upsertGlobalSetting(
+      "security_lockout_policy",
+      JSON.stringify(input.lockoutPolicy),
+      input.actor.id
+    );
+  }
+  await auditAdmin(input.actor.id, "SECURITY_SETTINGS_CHANGED", null, {
+    updated_role_permissions: input.rolePermissions !== undefined,
+    updated_lockout: input.lockoutPolicy !== undefined,
+  });
+}
+
+function safeJson<T>(raw: string | undefined, fallback: T): T {
+  if (!raw) return fallback;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+export { MANAGEABLE_ROLES };

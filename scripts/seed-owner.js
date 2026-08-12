@@ -17,6 +17,9 @@ async function main() {
   const password = process.env.OWNER_PASSWORD || process.env.CRM_OWNER_PASSWORD;
   const fullName =
     process.env.OWNER_NAME || process.env.CRM_OWNER_NAME || "Owner";
+  const mobileRaw = process.env.OWNER_MOBILE || process.env.CRM_OWNER_MOBILE || "";
+  const ownerPin = process.env.OWNER_LOGIN_PIN || process.env.CRM_OWNER_LOGIN_PIN || "";
+  const mobile = mobileRaw.replace(/\D/g, "").slice(-10);
 
   if (!serviceKey) throw new Error("SUPABASE_SERVICE_ROLE_KEY required");
   if (!email || !password) {
@@ -63,11 +66,33 @@ async function main() {
     id: user.id,
     email,
     full_name: fullName,
+    mobile: mobile.length === 10 ? mobile : null,
     role: "OWNER",
     is_active: true,
     company_scope: "ALL",
+    is_primary_owner: true,
+    is_developer: true,
   });
   if (upsertError) throw upsertError;
+
+  if (mobile.length === 10 && ownerPin && /^[0-9]{4,8}$/.test(ownerPin)) {
+    const bcrypt = require("bcryptjs");
+    const pin_hash = await bcrypt.hash(ownerPin, 12);
+    const { error: loginErr } = await admin.from("crm_user_login").upsert({
+      user_id: user.id,
+      mobile_number: mobile,
+      pin_hash,
+      pin_updated_at: new Date().toISOString(),
+      failed_attempts: 0,
+      locked_until: null,
+    });
+    if (loginErr) throw loginErr;
+    console.log("Owner mobile+PIN login ready for", mobile);
+  } else if (mobile.length === 10 || ownerPin) {
+    console.log(
+      "Skip mobile+PIN (need OWNER_MOBILE 10 digits and OWNER_LOGIN_PIN 4–8 digits)"
+    );
+  }
 
   const { data: companies, error: cErr } = await admin
     .from("crm_companies")

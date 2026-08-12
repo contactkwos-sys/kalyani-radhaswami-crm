@@ -12,6 +12,9 @@ function stripPinKeys(metadata: Record<string, unknown>) {
   delete clone.confirm_pin;
   delete clone.pin_hash;
   delete clone.OWNER_OVERRIDE_PIN;
+  delete clone.DEVELOPER_OVERRIDE_KEY;
+  delete clone.developer_override_key;
+  delete clone.override_key;
   return clone;
 }
 
