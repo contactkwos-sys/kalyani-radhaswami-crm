@@ -81,7 +81,10 @@ export default function RoleLoginPage() {
   useEffect(() => {
     listActiveUsers()
       .then((data) => setUsers(data))
-      .catch(() => setError("Could not load users. Check your connection."))
+      .catch((err) => {
+        console.log(err);
+        setError(`Could not load users: ${err.message || JSON.stringify(err)}`);
+      })
       .finally(() => setLoadingUsers(false));
   }, []);
 
