@@ -13,7 +13,7 @@ export default async function IntelligenceSettingsPage() {
   } catch {
     redirect("/login");
   }
-  if (!["OWNER", "ADMIN"].includes(ctx.profile.role)) redirect("/dashboard");
+  if (!["OWNER", "CEO_1", "CEO_2", "CEO_3", "ADMIN"].includes(ctx.profile.role)) redirect("/dashboard");
 
   const companyId =
     ctx.selectedCompanyIds.length === 1 ? ctx.selectedCompanyIds[0] : null;

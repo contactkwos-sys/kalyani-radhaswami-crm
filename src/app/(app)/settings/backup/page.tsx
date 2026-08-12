@@ -69,10 +69,10 @@ export default async function BackupSettingsPage() {
         driveConfigured={isGoogleDriveConfigured()}
         isOwner={profile.role === "OWNER"}
         canManageSettings={
-          profile.role === "OWNER" || profile.role === "ADMIN"
+          ["OWNER","CEO_1","CEO_2","CEO_3","ADMIN"].includes(profile.role)
         }
         canFullBackup={
-          profile.role === "OWNER" || profile.role === "ADMIN"
+          ["OWNER","CEO_1","CEO_2","CEO_3","ADMIN"].includes(profile.role)
         }
       />
     </div>

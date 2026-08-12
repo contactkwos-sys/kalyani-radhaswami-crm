@@ -6,7 +6,7 @@ import { listAuditLogs } from "@/lib/security/user-admin";
 export default async function AuditLogsPage() {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/login");
-  if (profile.role !== "OWNER" && profile.role !== "ADMIN") {
+  if (!["OWNER","CEO_1","CEO_2","CEO_3","ADMIN"].includes(profile.role)) {
     redirect("/dashboard");
   }
 

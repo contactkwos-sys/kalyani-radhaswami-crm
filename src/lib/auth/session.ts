@@ -48,7 +48,7 @@ export async function getAccessibleCompanies(
 ): Promise<Company[]> {
   const supabase = await createClient();
 
-  if (role === "OWNER") {
+  if (role === "OWNER" || role === "CEO_1" || role === "CEO_2" || role === "CEO_3") {
     const { data, error } = await supabase
       .from("crm_companies")
       .select("*")
@@ -96,7 +96,21 @@ export function canAccessCompanyScope(
   companyId: string | null,
   accessibleIds: string[]
 ): boolean {
-  if (profile.role === "OWNER" && profile.company_scope === "ALL") return true;
-  if (!companyId) return profile.role === "OWNER";
+  if (
+    (profile.role === "OWNER" ||
+      profile.role === "CEO_1" ||
+      profile.role === "CEO_2" ||
+      profile.role === "CEO_3") &&
+    profile.company_scope === "ALL"
+  )
+    return true;
+  if (!companyId) {
+    return (
+      profile.role === "OWNER" ||
+      profile.role === "CEO_1" ||
+      profile.role === "CEO_2" ||
+      profile.role === "CEO_3"
+    );
+  }
   return accessibleIds.includes(companyId);
 }

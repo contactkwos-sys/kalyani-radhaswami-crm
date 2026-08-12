@@ -84,7 +84,7 @@ export async function POST(request: Request) {
           }
           actor = verified.actor;
         }
-      } else if (profile.role !== "OWNER" && profile.role !== "ADMIN") {
+      } else if (!["OWNER","CEO_1","CEO_2","CEO_3","ADMIN"].includes(profile.role)) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
     }

@@ -1,8 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AddUserForm } from "@/components/admin/AddUserForm";
+import { PendingPinResets } from "@/components/admin/PendingPinResets";
 import { getCurrentProfile } from "@/lib/auth/session";
-import { listUsersForAdmin } from "@/lib/auth/mobile-login";
+import {
+  listPendingPinResetRequests,
+  listUsersForAdmin,
+} from "@/lib/auth/mobile-login";
 import {
   isOverrideConfigured,
   loadDeveloperProfile,
@@ -15,6 +19,7 @@ export default async function UsersManagementPage() {
   if (!ROLE_PERMISSIONS[profile.role].canManageUsers) redirect("/dashboard");
 
   const users = await listUsersForAdmin();
+  const pendingResets = await listPendingPinResetRequests();
   const actor = await loadDeveloperProfile(profile.id);
   const actorIsDeveloper = Boolean(
     actor?.role === "OWNER" && actor.is_developer
@@ -58,6 +63,8 @@ export default async function UsersManagementPage() {
         overrideConfigured={isOverrideConfigured()}
       />
 
+      <PendingPinResets requests={pendingResets} users={users} />
+
       <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--surface)]">
         <table className="min-w-full text-left text-sm">
           <thead className="text-xs uppercase text-[var(--muted)]">
@@ -81,8 +88,13 @@ export default async function UsersManagementPage() {
                   {u.is_primary_owner ? (
                     <p className="text-xs text-amber-800">Primary Owner</p>
                   ) : null}
+                  {u.is_developer ? (
+                    <p className="text-xs text-amber-800">Developer</p>
+                  ) : null}
                 </td>
-                <td className="px-4 py-3">{u.role}</td>
+                <td className="px-4 py-3">
+                  {ROLE_PERMISSIONS[u.role]?.label || u.role}
+                </td>
                 <td className="px-4 py-3">{u.mobile_number || "—"}</td>
                 <td className="px-4 py-3">{u.has_pin ? "Set" : "Not set"}</td>
                 <td className="px-4 py-3 whitespace-nowrap">

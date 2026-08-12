@@ -12,7 +12,7 @@ export default async function PartyProductHistoryPage({
   const { partyId, productId } = await params;
   const profile = await requireProfile().catch(() => null);
   if (!profile) redirect("/login");
-  if (!["OWNER", "ADMIN", "SALES_MANAGER"].includes(profile.role)) {
+  if (!["OWNER", "CEO_1", "CEO_2", "CEO_3", "ADMIN", "SALES_MANAGER"].includes(profile.role)) {
     redirect("/dashboard");
   }
 

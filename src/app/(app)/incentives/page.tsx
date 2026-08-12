@@ -12,7 +12,7 @@ export default async function IncentivesPage() {
     redirect("/login");
   }
 
-  const canConfirm = ["OWNER", "ADMIN"].includes(ctx.profile.role);
+  const canConfirm = ["OWNER", "CEO_1", "CEO_2", "CEO_3", "ADMIN"].includes(ctx.profile.role);
   const month = new Date().toLocaleDateString("en-CA", {
     timeZone: "Asia/Kolkata",
   }).slice(0, 7);

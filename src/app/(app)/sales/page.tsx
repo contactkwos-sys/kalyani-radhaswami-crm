@@ -11,7 +11,7 @@ export default async function SalesPage() {
     redirect("/login");
   }
 
-  const canEnter = ["OWNER", "ADMIN", "ACCOUNTANT"].includes(ctx.profile.role);
+  const canEnter = ["OWNER", "CEO_1", "CEO_2", "CEO_3", "ADMIN", "ACCOUNTANT"].includes(ctx.profile.role);
   const sales = await listSales({ companyIds: ctx.selectedCompanyIds });
 
   return (

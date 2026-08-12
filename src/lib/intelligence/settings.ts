@@ -55,7 +55,7 @@ export async function upsertIntelligenceSettings(
   input: Partial<IntelligenceSettings> & { company_id?: string | null }
 ) {
   const profile = await requireProfile();
-  if (!["OWNER", "ADMIN"].includes(profile.role)) throw new Error("Forbidden");
+  if (!["OWNER", "CEO_1", "CEO_2", "CEO_3", "ADMIN"].includes(profile.role)) throw new Error("Forbidden");
   const supabase = await createClient();
 
   const companyId = input.company_id ?? null;
