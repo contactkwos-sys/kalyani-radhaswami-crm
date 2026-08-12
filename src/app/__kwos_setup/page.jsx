@@ -110,7 +110,7 @@ export default function SetupWizard() {
             ))}
             <p style={{ fontSize: 12, color: "#999", marginTop: 10 }}>
               Everyone will be asked to set their own permanent PIN the first time they log in.
-              You can delete this page's route once done, or leave it — it's hidden and key-protected.
+              You can delete this page&apos;s route once done, or leave it — it&apos;s hidden and key-protected.
             </p>
           </div>
         )}
