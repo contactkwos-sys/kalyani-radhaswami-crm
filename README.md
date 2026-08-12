@@ -32,6 +32,8 @@ Built by Kumaresh Budhia · Support: contact.kwos@gmail.com · WhatsApp: [98250-
 2. Apply migration: `npm run db:migrate`
 3. Seed owner: `OWNER_EMAIL=... OWNER_PASSWORD=... OWNER_NAME="Kumaresh Budhia" OWNER_MOBILE=... OWNER_LOGIN_PIN=... npm run db:seed-owner`
    - Seed marks the account as **primary Owner + Developer**
+   - If `OWNER_MOBILE` is set and `OWNER_LOGIN_PIN` is omitted, a temporary 6-digit PIN is **auto-generated** and printed once
+   - Admin → Users: leave Temporary PIN blank (or click **Auto-generate PIN**) to create a one-time temporary PIN
 4. `npm run dev`
 
 CRM tables are namespaced `crm_*` so they coexist with other apps on the shared Supabase project.

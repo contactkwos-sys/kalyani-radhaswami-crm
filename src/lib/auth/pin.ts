@@ -1,13 +1,29 @@
 import bcrypt from "bcryptjs";
-import { createHash, randomBytes } from "crypto";
+import { createHash, randomBytes, randomInt } from "crypto";
 
 const BCRYPT_ROUNDS = 12;
 export const PIN_MIN_LEN = 4;
 export const PIN_MAX_LEN = 8;
+export const DEFAULT_GENERATED_PIN_LEN = 6;
 export const MAX_FAILED_ATTEMPTS = 5;
 export const LOCKOUT_MINUTES = 15;
 export const DEVICE_COOKIE = "crm_device_token";
 export const DEVICE_MAX_AGE_DAYS = 90;
+
+/** Cryptographically random numeric PIN shown once to an admin (never stored plaintext). */
+export function generateTemporaryPin(
+  length: number = DEFAULT_GENERATED_PIN_LEN
+): string {
+  const len = Math.min(
+    PIN_MAX_LEN,
+    Math.max(PIN_MIN_LEN, Math.floor(length) || DEFAULT_GENERATED_PIN_LEN)
+  );
+  let pin = "";
+  for (let i = 0; i < len; i += 1) {
+    pin += String(randomInt(0, 10));
+  }
+  return pin;
+}
 
 export function normalizeMobile(input: string): string | null {
   const digits = String(input || "").replace(/\D/g, "");
