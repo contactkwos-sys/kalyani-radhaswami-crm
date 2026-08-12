@@ -1,7 +1,17 @@
+import { redirect } from "next/navigation";
 import { BrandingFooter } from "@/components/branding/BrandingFooter";
 import { LoginForm } from "@/components/auth/LoginForm";
+import { getSessionUser } from "@/lib/auth/session";
+import { hasTrustedDeviceCookie } from "@/lib/auth/mobile-login";
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  const user = await getSessionUser();
+  if (user) redirect("/dashboard");
+
+  if (await hasTrustedDeviceCookie()) {
+    redirect("/api/auth/device-restore");
+  }
+
   return (
     <div className="flex min-h-screen flex-col">
       <div className="relative flex flex-1 items-center justify-center px-4 py-10">
@@ -17,7 +27,7 @@ export default function LoginPage() {
             </span>
           </h1>
           <p className="mt-2 text-sm text-[var(--muted)]">
-            Secure sign-in for owner, managers, salesmen and accountants.
+            Sign in with your mobile number and PIN.
           </p>
           <div className="mt-6">
             <LoginForm />
