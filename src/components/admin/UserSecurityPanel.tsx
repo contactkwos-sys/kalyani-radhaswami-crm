@@ -59,6 +59,7 @@ export function UserSecurityPanel({
   const [devices, setDevices] = useState(initialDevices);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [generatedPin, setGeneratedPin] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [overrideKey, setOverrideKey] = useState("");
   const [confirmText, setConfirmText] = useState("");
@@ -71,6 +72,7 @@ export function UserSecurityPanel({
     setPending(true);
     setError(null);
     setMessage(null);
+    setGeneratedPin(null);
     try {
       if (opts?.requireConfirmWord && confirmText !== opts.requireConfirmWord) {
         throw new Error(`Type ${opts.requireConfirmWord} to confirm.`);
@@ -95,6 +97,9 @@ export function UserSecurityPanel({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Request failed");
       setMessage(data.message || "Saved.");
+      if (data.temporaryPin) {
+        setGeneratedPin(String(data.temporaryPin));
+      }
       setNewPin("");
       setOverrideKey("");
       setConfirmText("");
@@ -205,8 +210,9 @@ export function UserSecurityPanel({
       <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 space-y-3">
         <h3 className="font-semibold">Reset PIN</h3>
         <p className="text-sm text-[var(--muted)]">
-          Enter a temporary PIN. Existing PIN is never shown. Remembered devices
-          and sessions are revoked; the user must log in again.
+          Enter a temporary PIN, or auto-generate one. Existing PIN is never
+          shown. Remembered devices and sessions are revoked; the user must log
+          in again.
         </p>
         <input
           type="password"
@@ -219,20 +225,54 @@ export function UserSecurityPanel({
           }
           className="w-full max-w-sm rounded-md border border-[var(--border)] px-3 py-2 text-sm tracking-[0.25em]"
         />
-        <button
-          type="button"
-          disabled={pending || newPin.length < 4}
-          onClick={() =>
-            run(
-              privileged ? "force_pin_reset" : "reset_pin",
-              { newPin, mobile },
-              { requireOverride: privileged && security.actorIsDeveloper }
-            )
-          }
-          className="rounded-md bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
-        >
-          Reset PIN
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={pending || newPin.length < 4}
+            onClick={() =>
+              run(
+                privileged ? "force_pin_reset" : "reset_pin",
+                { newPin, mobile },
+                { requireOverride: privileged && security.actorIsDeveloper }
+              )
+            }
+            className="rounded-md bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            Reset PIN
+          </button>
+          <button
+            type="button"
+            disabled={pending || !mobile.trim()}
+            onClick={() => {
+              if (
+                !window.confirm(
+                  "Auto-generate a temporary 6-digit PIN for this user?"
+                )
+              ) {
+                return;
+              }
+              run(
+                privileged ? "force_generate_pin" : "generate_pin",
+                { mobile, autoGenerate: true },
+                { requireOverride: privileged && security.actorIsDeveloper }
+              );
+            }}
+            className="rounded-md border px-3 py-2 text-sm font-semibold disabled:opacity-60"
+          >
+            Auto-generate PIN
+          </button>
+        </div>
+        {generatedPin && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-950 max-w-md">
+            <p className="font-semibold">Temporary PIN (copy now)</p>
+            <p className="mt-1 font-mono text-2xl tracking-[0.35em]">
+              {generatedPin}
+            </p>
+            <p className="mt-2 text-xs text-amber-900">
+              This PIN will not be shown again. Share it securely with the user.
+            </p>
+          </div>
+        )}
       </section>
 
       <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 space-y-3">
