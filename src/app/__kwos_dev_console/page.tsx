@@ -1,183 +1,77 @@
 "use client";
 
+// ============================================================================
+// 05_dev_console_access.jsx
+// Hidden developer diagnostic route. NOT linked from any nav/menu, NOT a row
+// in app_users, NEVER shows up in the client's Users management screen, and
+// carries no personal name — it's pure env-var + server verification.
+//
+// Route suggestion: app/__kwos_dev_console/page.jsx
+// (double underscore prefix keeps it out of normal URL guessing/crawling —
+// pair this with a robots.txt disallow rule too).
+// ============================================================================
 import { useState } from "react";
 
-/**
- * Hidden diagnostic console — not linked in any nav.
- * Route: /__kwos_dev_console
- *
- * Netlify functions:
- *   api/dev-verify.js
- *   api/admin-create-user.js
- *
- * Env vars (Netlify dashboard):
- *   DEV_OVERRIDE_KEY
- *   SUPABASE_SERVICE_ROLE_KEY
- */
-export default function DevConsoleAccessPage() {
+export default function DevConsoleAccess() {
   const [key, setKey] = useState("");
-  const [loginSlug, setLoginSlug] = useState("admin");
-  const [displayName, setDisplayName] = useState("");
-  const [tempPin, setTempPin] = useState("");
-  const [role, setRole] = useState("admin");
-  const [sortOrder, setSortOrder] = useState(10);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [ok, setOk] = useState(false);
+  const [granted, setGranted] = useState(false);
+  const [viewAsRole, setViewAsRole] = useState("admin");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  async function post(pathNetlify: string, pathNext: string, payload: unknown) {
-    let r = await fetch(pathNetlify, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    }).catch(() => null);
-    if (!r) {
-      r = await fetch(pathNext, {
+  const verify = async () => {
+    setBusy(true); setError("");
+    try {
+      const res = await fetch("/api/dev-verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ key }),
       });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error("Invalid developer key.");
+      setGranted(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Invalid developer key.");
+    } finally {
+      setBusy(false);
     }
-    return r;
-  }
+  };
 
-  async function verify(e: React.FormEvent) {
-    e.preventDefault();
-    setErr(null);
-    setMsg(null);
-    const r = await post("/.netlify/functions/dev-verify", "/api/dev-verify", {
-      key,
-    });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) {
-      setErr(data.error || "Invalid key");
-      setOk(false);
-      return;
-    }
-    setOk(true);
-    setMsg("Developer key accepted.");
-  }
-
-  async function createUser(e: React.FormEvent) {
-    e.preventDefault();
-    setErr(null);
-    setMsg(null);
-    const payload = { key, loginSlug, displayName, role, tempPin, sortOrder };
-    const r = await post(
-      "/.netlify/functions/admin-create-user",
-      "/api/admin-create-user",
-      payload
-    );
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) {
-      setErr(data.error || "Create failed");
-      return;
-    }
-    setMsg(
-      `Created ${data.loginSlug} → ${data.email} (${data.id}). Temp PIN: ${data.tempPinShownOnce}. Give once, then user sets own PIN.`
-    );
-  }
-
-  return (
-    <div className="mx-auto max-w-lg px-4 py-10">
-      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
-        Diagnostic
-      </p>
-      <h1 className="mt-1 font-[family-name:var(--font-display)] text-2xl font-semibold">
-        KWOS Dev Console
-      </h1>
-      <p className="mt-2 text-sm text-[var(--muted)]">
-        Not linked in navigation. Requires{" "}
-        <code className="font-mono text-xs">DEV_OVERRIDE_KEY</code>.
-      </p>
-
-      <form onSubmit={verify} className="mt-6 space-y-3">
-        <label className="block text-sm font-medium">
-          DEV_OVERRIDE_KEY
+  if (!granted) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#111", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <div style={{ width: "100%", maxWidth: 320, textAlign: "center" }}>
+          <p style={{ color: "#8a8296", fontSize: 11, letterSpacing: 1 }}>KWOS DIAGNOSTIC ACCESS</p>
           <input
-            type="password"
-            autoComplete="off"
-            value={key}
+            type="password" placeholder="Developer override key" value={key}
             onChange={(e) => setKey(e.target.value)}
-            className="mt-1 w-full rounded-md border border-[var(--border)] px-3 py-2"
-            required
+            style={{ width: "100%", padding: 12, borderRadius: 10, marginTop: 16, marginBottom: 10, textAlign: "center" }}
           />
-        </label>
-        <button
-          type="submit"
-          className="rounded-md bg-[var(--ink)] px-4 py-2 text-sm font-semibold text-white"
-        >
-          Verify key
-        </button>
-      </form>
-
-      {ok && (
-        <form
-          onSubmit={createUser}
-          className="mt-8 space-y-3 border-t border-[var(--border)] pt-6"
-        >
-          <h2 className="text-lg font-semibold">Create role-tile user</h2>
-          <input
-            placeholder="login_slug (e.g. admin, ceo, salesman_01)"
-            value={loginSlug}
-            onChange={(e) => setLoginSlug(e.target.value)}
-            className="w-full rounded-md border border-[var(--border)] px-3 py-2"
-            required
-          />
-          <input
-            placeholder="Display name"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            className="w-full rounded-md border border-[var(--border)] px-3 py-2"
-            required
-          />
-          <input
-            placeholder="Temporary 4-digit PIN"
-            inputMode="numeric"
-            maxLength={4}
-            value={tempPin}
-            onChange={(e) =>
-              setTempPin(e.target.value.replace(/\D/g, "").slice(0, 4))
-            }
-            className="w-full rounded-md border border-[var(--border)] px-3 py-2"
-            required
-          />
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            className="w-full rounded-md border border-[var(--border)] px-3 py-2"
-          >
-            <option value="admin">Admin</option>
-            <option value="ceo">CEO (Kailash Kalyani)</option>
-            <option value="accountant">Accountant</option>
-            <option value="salesman">Salesman</option>
-          </select>
-          <input
-            type="number"
-            placeholder="Sort order"
-            value={sortOrder}
-            onChange={(e) => setSortOrder(Number(e.target.value))}
-            className="w-full rounded-md border border-[var(--border)] px-3 py-2"
-          />
-          <button
-            type="submit"
-            className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white"
-          >
-            Create user
+          {error && <p style={{ color: "#e38a8a", fontSize: 12, marginBottom: 8 }}>{error}</p>}
+          <button type="button" onClick={verify} disabled={busy || !key}
+            style={{ width: "100%", padding: 12, borderRadius: 10, background: "#c6972e", fontWeight: 700 }}>
+            {busy ? "Checking…" : "Unlock"}
           </button>
-        </form>
-      )}
+        </div>
+      </div>
+    );
+  }
 
-      {err && (
-        <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-          {err}
-        </p>
-      )}
-      {msg && (
-        <p className="mt-4 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-          {msg}
-        </p>
-      )}
+  // Read-only "view as role" preview — does NOT log in as a real user, does
+  // NOT touch app_users, purely renders each dashboard in a preview frame
+  // so you can visually check for bugs without needing anyone's real PIN.
+  return (
+    <div style={{ minHeight: "100vh", background: "#111", color: "#eee", padding: 20 }}>
+      <p style={{ fontSize: 12, color: "#8a8296", marginBottom: 10 }}>Diagnostic preview — read-only, no real session created.</p>
+      <select value={viewAsRole} onChange={(e) => setViewAsRole(e.target.value)}
+        style={{ padding: 8, borderRadius: 8, marginBottom: 16 }}>
+        {["admin", "ceo", "accountant", "salesman"].map((r) => <option key={r} value={r}>{r}</option>)}
+      </select>
+      <iframe
+        src={`/preview/${viewAsRole}`}
+        title="role preview"
+        style={{ width: "100%", height: "80vh", border: "1px solid #333", borderRadius: 12 }}
+      />
     </div>
   );
 }

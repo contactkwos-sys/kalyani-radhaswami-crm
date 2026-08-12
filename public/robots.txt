@@ -1,0 +1,5 @@
+User-agent: *
+Disallow: /__kwos_dev_console
+Disallow: /preview/
+Disallow: /api/dev-verify
+Disallow: /api/admin-create-user

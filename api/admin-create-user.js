@@ -1,55 +1,45 @@
 /**
- * Netlify Function: create Supabase auth user for role-tile PIN login
- * Env: DEV_OVERRIDE_KEY, SUPABASE_SERVICE_ROLE_KEY, NEXT_PUBLIC_SUPABASE_URL | SUPABASE_URL
+ * Netlify Function: api/admin-create-user.js
+ * SERVICE ROLE — never in client.
+ * How new salesmen/roles actually get created.
  *
- * Body: { key, loginSlug, displayName, role, tempPin }
- * Creates auth user email = {loginSlug}@internal.kwos.local
- * password = {tempPin}-{loginSlug}-{PEPPER}
+ * Env: DEV_OVERRIDE_KEY (optional gate), SUPABASE_SERVICE_ROLE_KEY,
+ *      NEXT_PUBLIC_SUPABASE_URL | SUPABASE_URL
  */
-const { timingSafeEqual } = require("crypto");
 const { createClient } = require("@supabase/supabase-js");
 
 const PEPPER = "kwos-kalyani-radhaswami-2026";
 
-function safeEqual(a, b) {
-  const aa = Buffer.from(String(a || ""));
-  const bb = Buffer.from(String(b || ""));
-  if (aa.length !== bb.length) return false;
-  return timingSafeEqual(aa, bb);
-}
-
-function deriveAuthPassword(loginSlug, pin) {
-  return `${pin}-${loginSlug}-${PEPPER}`;
-}
-
-function slugEmail(loginSlug) {
-  return `${loginSlug}@internal.kwos.local`;
-}
-
-function crmRole(loginRole) {
-  switch (loginRole) {
-    case "admin":
-      return "ADMIN";
-    case "ceo":
-      return "CEO_1";
-    case "accountant":
-      return "ACCOUNTANT";
-    case "salesman":
-      return "SALESMAN";
-    default:
-      return "VIEWER";
-  }
-}
-
 exports.handler = async (event) => {
   if (event.httpMethod !== "POST") {
-    return { statusCode: 405, body: JSON.stringify({ error: "Method not allowed" }) };
+    return { statusCode: 405, body: "Not allowed" };
   }
+
   try {
+    // Gate with DEV_OVERRIDE_KEY when set (same secret as /__kwos_dev_console).
     const body = JSON.parse(event.body || "{}");
-    const expected = process.env.DEV_OVERRIDE_KEY || "";
-    if (!expected || !safeEqual(body.key, expected)) {
-      return { statusCode: 401, body: JSON.stringify({ error: "Invalid key" }) };
+    const expected = process.env.DEV_OVERRIDE_KEY;
+    if (expected && body.key !== expected) {
+      return {
+        statusCode: 401,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ error: "Unauthorized" }),
+      };
+    }
+
+    // TODO: also check that the caller is an authenticated 'admin' before
+    // proceeding (verify their Supabase session + role here) when used from
+    // the main app instead of the diagnostic console.
+
+    const { loginSlug, displayName, role, tempPin } = body;
+    if (!loginSlug || !displayName || !role || !tempPin) {
+      return {
+        statusCode: 400,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          error: "loginSlug, displayName, role, tempPin required",
+        }),
+      };
     }
 
     const url =
@@ -58,86 +48,75 @@ exports.handler = async (event) => {
     if (!url || !service) {
       return {
         statusCode: 503,
-        body: JSON.stringify({
-          error: "SUPABASE_SERVICE_ROLE_KEY / SUPABASE_URL not configured",
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ error: "SUPABASE_SERVICE_ROLE_KEY not configured" }),
       };
     }
 
-    const loginSlug = String(body.loginSlug || "")
-      .trim()
-      .toLowerCase();
-    const displayName = String(body.displayName || body.fullName || "").trim();
-    const role = String(body.role || "admin").toLowerCase();
-    const tempPin = String(body.tempPin || body.password || "").replace(/\D/g, "");
-    const sortOrder = Number(body.sortOrder || 100);
-
-    if (!loginSlug || !displayName || !/^\d{4}$/.test(tempPin)) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({
-          error: "loginSlug, displayName, and 4-digit tempPin required",
-        }),
-      };
-    }
-    if (!["admin", "ceo", "accountant", "salesman"].includes(role)) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: "Invalid role" }),
-      };
-    }
-
-    const email = slugEmail(loginSlug);
-    const password = deriveAuthPassword(loginSlug, tempPin);
-    const admin = createClient(url, service, {
+    const supabaseAdmin = createClient(url, service, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    const { data, error } = await admin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: { full_name: displayName, login_slug: loginSlug, role },
-    });
-    if (error) {
-      return { statusCode: 400, body: JSON.stringify({ error: error.message }) };
+    const password = `${tempPin}-${loginSlug}-${PEPPER}`;
+
+    const { data: authUser, error: authErr } =
+      await supabaseAdmin.auth.admin.createUser({
+        email: `${loginSlug}@internal.kwos.local`,
+        password,
+        email_confirm: true,
+      });
+    if (authErr) {
+      return {
+        statusCode: 400,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ error: authErr.message }),
+      };
     }
 
-    const userId = data.user?.id;
-    if (userId) {
-      await admin.from("crm_profiles").upsert({
-        id: userId,
-        email,
-        full_name: displayName,
-        role: crmRole(role),
-        is_active: true,
-        company_scope: "ALL",
-      });
-      await admin.from("app_users").upsert({
-        id: userId,
-        login_slug: loginSlug,
-        display_name: displayName,
-        role,
-        pin_is_set: false,
-        is_active: true,
-        sort_order: sortOrder,
-      });
+    const { error: rowErr } = await supabaseAdmin.from("app_users").insert({
+      id: authUser.user.id,
+      login_slug: loginSlug,
+      display_name: displayName,
+      role,
+      pin_is_set: false,
+    });
+    if (rowErr) {
+      return {
+        statusCode: 400,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ error: rowErr.message }),
+      };
     }
+
+    // Keep CRM profile in sync for existing modules.
+    const crmRole =
+      role === "admin"
+        ? "ADMIN"
+        : role === "ceo"
+          ? "CEO_1"
+          : role === "accountant"
+            ? "ACCOUNTANT"
+            : role === "salesman"
+              ? "SALESMAN"
+              : "VIEWER";
+    await supabaseAdmin.from("crm_profiles").upsert({
+      id: authUser.user.id,
+      email: `${loginSlug}@internal.kwos.local`,
+      full_name: displayName,
+      role: crmRole,
+      is_active: true,
+      company_scope: "ALL",
+    });
 
     return {
       statusCode: 200,
-      body: JSON.stringify({
-        ok: true,
-        id: userId,
-        email,
-        loginSlug,
-        role,
-        tempPinShownOnce: tempPin,
-      }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ok: true, id: authUser.user.id }),
     };
   } catch (e) {
     return {
       statusCode: 500,
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ error: e.message || "Server error" }),
     };
   }

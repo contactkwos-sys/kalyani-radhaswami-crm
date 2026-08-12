@@ -34,7 +34,8 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/__kwos_dev_console") ||
     pathname.startsWith("/api/dev-verify") ||
     pathname.startsWith("/api/admin-create-user") ||
-    pathname.startsWith("/.netlify/functions/");
+    pathname.startsWith("/.netlify/functions/") ||
+    pathname.startsWith("/preview/");
   const isPublicAsset =
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
