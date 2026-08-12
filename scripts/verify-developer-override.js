@@ -123,14 +123,7 @@ async function main() {
     full_name: "Dev Salesman",
   });
 
-  // Clear primary only on the test owner row path — avoid wiping production primary.
-  // If a primary already exists, skip setting another (unique index).
-  const { data: existingPrimary } = await admin
-    .from("crm_profiles")
-    .select("id")
-    .eq("is_primary_owner", true)
-    .maybeSingle();
-
+  // Do not set is_primary_owner on disposable test users (unique + production safety).
   await admin.from("crm_profiles").upsert({
     id: owner.id,
     email: ownerEmail,
@@ -138,7 +131,7 @@ async function main() {
     role: "OWNER",
     is_active: true,
     company_scope: "ALL",
-    is_primary_owner: !existingPrimary,
+    is_primary_owner: false,
     is_developer: true,
   });
   await admin.from("crm_profiles").upsert({
@@ -158,11 +151,8 @@ async function main() {
     .select("is_primary_owner, is_developer, role")
     .eq("id", owner.id)
     .single();
-  if (ownerRow?.is_developer && ownerRow?.role === "OWNER") {
-    pass(
-      "owner.developer_flags",
-      ownerRow.is_primary_owner ? "primary" : "developer-only"
-    );
+  if (ownerRow?.is_developer && ownerRow?.role === "OWNER" && !ownerRow.is_primary_owner) {
+    pass("owner.developer_flags", "developer-not-primary-test-user");
   } else fail("owner.developer_flags", JSON.stringify(ownerRow));
 
   // PIN reset flow: hash + revoke devices
