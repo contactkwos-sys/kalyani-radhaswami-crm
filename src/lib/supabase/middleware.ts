@@ -33,8 +33,10 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
     pathname.startsWith("/api/auth");
+  // Cron is authenticated by CRON_SECRET inside the route handler (not session cookies).
+  const isCronBackup = pathname === "/api/backup/cron";
 
-  if (!user && !isAuthRoute && !isPublicAsset && pathname !== "/") {
+  if (!user && !isAuthRoute && !isPublicAsset && !isCronBackup && pathname !== "/") {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("next", pathname);

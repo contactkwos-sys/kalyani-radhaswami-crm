@@ -141,7 +141,7 @@ export const BACKUP_SHEETS: SheetDef[] = [
     sheet: "GPS Visit Records",
     table: "crm_visit_gps_logs",
     companyColumn: "company_id",
-    orderBy: "created_at",
+    orderBy: "server_received_at",
   },
   {
     sheet: "Visit Feedback",
