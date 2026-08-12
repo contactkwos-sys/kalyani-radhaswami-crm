@@ -283,12 +283,14 @@ async function main() {
   else fail("role.change");
 
   // Cleanup
-  await admin.from("crm_auth_devices").delete().eq("user_id", salesman.id);
-  await admin.from("crm_user_login").delete().eq("user_id", salesman.id);
-  await admin.from("crm_profiles").delete().eq("id", salesman.id);
-  await admin.auth.admin.deleteUser(salesman.id);
-  await admin.from("crm_profiles").delete().eq("id", owner.id);
-  await admin.auth.admin.deleteUser(owner.id);
+  // Cleanup (best-effort; always attempt auth delete)
+  for (const u of [salesman, owner]) {
+    await admin.from("crm_auth_devices").delete().eq("user_id", u.id);
+    await admin.from("crm_user_login").delete().eq("user_id", u.id);
+    await admin.from("crm_user_company_access").delete().eq("user_id", u.id);
+    await admin.from("crm_profiles").delete().eq("id", u.id);
+    await admin.auth.admin.deleteUser(u.id);
+  }
   pass("cleanup");
 
   const failed = results.filter((r) => !r.ok);
