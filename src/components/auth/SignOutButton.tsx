@@ -10,6 +10,8 @@ export function SignOutButton() {
   async function onSignOut() {
     setLoading(true);
     try {
+      const { logout } = await import("@/lib/auth/auth-lib");
+      await logout();
       await fetch("/api/auth/logout", { method: "POST" });
     } finally {
       router.replace("/login");

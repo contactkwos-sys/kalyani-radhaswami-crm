@@ -51,7 +51,7 @@ export async function buildWorkbookBuffer(
   const { iso } = stampParts();
   const info = wb.addWorksheet("Backup Information");
   const infoRows: Array<[string, string | number]> = [
-    ["Application", "Kalyani Thread / Radhaswami Thread CRM"],
+    ["Application", "Kalyani · Radhaswami CRM"],
     ["Application Version", APP_VERSION],
     ["Backup Timestamp (IST)", iso],
     ["Backup Type", opts.backupType],

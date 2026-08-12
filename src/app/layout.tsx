@@ -15,7 +15,7 @@ const fraunces = Fraunces({
 export const metadata: Metadata = {
   title: "Kalyani · Radhaswami CRM",
   description:
-    "Production Sales Force Management CRM for Kalyani Thread and Radhaswami Thread",
+    "Production Sales Force Management CRM for Kalyani · Radhaswami",
 };
 
 export default function RootLayout({

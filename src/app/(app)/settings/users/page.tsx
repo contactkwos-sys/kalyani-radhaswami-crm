@@ -41,7 +41,7 @@ export default async function UsersManagementPage() {
             Users
           </h2>
           <p className="mt-1 text-sm text-[var(--muted)]">
-            Create and configure business users with Mobile + PIN login, roles,
+            Create and configure business users with role-tile + PIN login,
             departments, and allowed modules. PIN values are never shown after
             save.
           </p>
@@ -53,14 +53,6 @@ export default async function UsersManagementPage() {
           >
             Security / audit logs
           </Link>
-          {actorIsDeveloper && (
-            <Link
-              href="/settings/security"
-              className="font-semibold text-[var(--accent)] hover:underline"
-            >
-              Security settings
-            </Link>
-          )}
         </div>
       </div>
 

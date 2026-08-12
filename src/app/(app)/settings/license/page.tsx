@@ -72,7 +72,7 @@ export default async function LicenseSettingsPage() {
         <a
           href={whatsappLink(
             whatsapp,
-            "Hello, I request activation for Kalyani / Radhaswami Thread CRM."
+            "Hello, I request activation for Kalyani · Radhaswami CRM."
           )}
           target="_blank"
           rel="noopener noreferrer"

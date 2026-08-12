@@ -11,6 +11,8 @@ const eslintConfig = defineConfig([
     "build/**",
     "node_modules/**",
     "scripts/**",
+    "api/**",
+    "netlify/functions/**",
   ]),
 ]);
 

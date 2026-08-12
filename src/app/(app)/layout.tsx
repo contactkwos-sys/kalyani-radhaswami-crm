@@ -64,7 +64,7 @@ export default async function AppLayout({
             <div className="mt-4 flex flex-wrap gap-3">
               <a
                 href={`https://wa.me/9825063208?text=${encodeURIComponent(
-                  "Hello, my CRM trial has expired. Please activate Kalyani / Radhaswami Thread CRM."
+                  "Hello, my CRM trial has expired. Please activate Kalyani · Radhaswami CRM."
                 )}`}
                 target="_blank"
                 rel="noopener noreferrer"

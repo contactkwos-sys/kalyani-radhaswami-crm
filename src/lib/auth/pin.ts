@@ -75,6 +75,7 @@ export function stripPinMetadata(metadata: Record<string, unknown>) {
     "token",
     "device_token",
     "DEVELOPER_OVERRIDE_KEY",
+    "DEV_OVERRIDE_KEY",
     "developer_override_key",
     "override_key",
     "OWNER_OVERRIDE_PIN",

@@ -101,12 +101,6 @@ const NAV: Array<{
   },
   { href: "/settings/company", label: "Company", module: "company" },
   { href: "/settings/license", label: "License", module: "license" },
-  {
-    href: "/settings/security",
-    label: "Security",
-    module: "security",
-    ownerOnly: true,
-  },
 ];
 
 export function AppShell({
