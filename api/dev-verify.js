@@ -1,26 +1,25 @@
 /**
  * Netlify Function: api/dev-verify.js
- * Compares against DEV_OVERRIDE_KEY which lives ONLY in Netlify environment
- * variables — never in the frontend bundle, never in the database.
+ * Compares against DEV_OVERRIDE_KEY (or DEVELOPER_OVERRIDE_KEY) which lives ONLY
+ * in Netlify environment variables — never in the frontend bundle, never in the database.
  */
 exports.handler = async (event) => {
+  const json = (statusCode, body) => ({
+    statusCode,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
   if (event.httpMethod !== "POST") {
-    return { statusCode: 405, body: "Not allowed" };
+    return json(405, { ok: false, error: "Not allowed" });
   }
   try {
     const { key } = JSON.parse(event.body || "{}");
-    const expected = process.env.DEV_OVERRIDE_KEY; // set in Netlify site settings
-    const ok = !!expected && key === expected;
-    return {
-      statusCode: ok ? 200 : 401,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ok }),
-    };
+    const expected =
+      process.env.DEV_OVERRIDE_KEY || process.env.DEVELOPER_OVERRIDE_KEY;
+    const ok = !!expected && typeof key === "string" && key === expected;
+    return json(ok ? 200 : 401, { ok });
   } catch {
-    return {
-      statusCode: 500,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ok: false }),
-    };
+    return json(500, { ok: false });
   }
 };
