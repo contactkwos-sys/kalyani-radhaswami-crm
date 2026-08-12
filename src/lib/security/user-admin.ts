@@ -374,7 +374,7 @@ export async function ownerResetUserPin(input: {
   actor: DeveloperProfile | Profile;
   userId: string;
   newPin?: string;
-  /** When true (or newPin blank), generate a temporary PIN and return it once. */
+  /** When true, generate a temporary PIN and return it once. */
   autoGenerate?: boolean;
   mobile?: string;
   operation?: DeveloperOperation;
