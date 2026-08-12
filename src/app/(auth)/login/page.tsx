@@ -6,7 +6,7 @@
 // no OTP anywhere. Drop this in as your login route (e.g. app/login/page.jsx
 // or pages/login.jsx — adjust the router import for your Next.js version).
 // ============================================================================
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation"; // Next 13+/14 app router.
 // If this project uses the Pages router instead, swap to:
 // import { useRouter } from "next/router";
@@ -80,6 +80,20 @@ export default function RoleLoginPage() {
   const [setPinStep, setSetPinStep] = useState<SetPinStep>("temp");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // Refs avoid stale React state when the 4th confirm digit auto-submits.
+  const tempPinRef = useRef("");
+  const newPinRef = useRef("");
+  const confirmPinRef = useRef("");
+
+  const resetSetPinState = () => {
+    tempPinRef.current = "";
+    newPinRef.current = "";
+    confirmPinRef.current = "";
+    setTempPin("");
+    setNewPin("");
+    setConfirmPin("");
+    setSetPinStep("temp");
+  };
 
   useEffect(() => {
     listActiveUsers()
@@ -95,10 +109,7 @@ export default function RoleLoginPage() {
     setSelected(u);
     setMode(u.pin_is_set ? "pin" : "setpin");
     setPin("");
-    setTempPin("");
-    setNewPin("");
-    setConfirmPin("");
-    setSetPinStep("temp");
+    resetSetPinState();
     setError("");
   };
 
@@ -134,6 +145,11 @@ export default function RoleLoginPage() {
     nextConfirm: string
   ) => {
     if (!selected) return;
+    if (nextNew !== nextConfirm) {
+      setError("New PIN and confirm PIN do not match.");
+      resetSetPinState();
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -141,10 +157,7 @@ export default function RoleLoginPage() {
       await goToRoleHome();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not set PIN.");
-      setTempPin("");
-      setNewPin("");
-      setConfirmPin("");
-      setSetPinStep("temp");
+      resetSetPinState();
     } finally {
       setBusy(false);
     }
@@ -154,41 +167,52 @@ export default function RoleLoginPage() {
     if (busy) return;
     setError("");
     if (setPinStep === "temp") {
-      const next = (tempPin + d).slice(0, 4);
+      const next = (tempPinRef.current + d).slice(0, 4);
+      tempPinRef.current = next;
       setTempPin(next);
       if (next.length === 4) setSetPinStep("new");
       return;
     }
     if (setPinStep === "new") {
-      const next = (newPin + d).slice(0, 4);
+      const next = (newPinRef.current + d).slice(0, 4);
+      newPinRef.current = next;
       setNewPin(next);
       if (next.length === 4) setSetPinStep("confirm");
       return;
     }
-    const next = (confirmPin + d).slice(0, 4);
+    const next = (confirmPinRef.current + d).slice(0, 4);
+    confirmPinRef.current = next;
     setConfirmPin(next);
-    if (next.length === 4) void submitSetPin(tempPin, newPin, next);
+    if (next.length === 4) {
+      void submitSetPin(tempPinRef.current, newPinRef.current, next);
+    }
   };
 
   const onSetPinBackspace = () => {
     if (busy) return;
     if (setPinStep === "confirm") {
-      if (confirmPin.length > 0) {
-        setConfirmPin(confirmPin.slice(0, -1));
+      if (confirmPinRef.current.length > 0) {
+        const next = confirmPinRef.current.slice(0, -1);
+        confirmPinRef.current = next;
+        setConfirmPin(next);
         return;
       }
       setSetPinStep("new");
       return;
     }
     if (setPinStep === "new") {
-      if (newPin.length > 0) {
-        setNewPin(newPin.slice(0, -1));
+      if (newPinRef.current.length > 0) {
+        const next = newPinRef.current.slice(0, -1);
+        newPinRef.current = next;
+        setNewPin(next);
         return;
       }
       setSetPinStep("temp");
       return;
     }
-    setTempPin(tempPin.slice(0, -1));
+    const next = tempPinRef.current.slice(0, -1);
+    tempPinRef.current = next;
+    setTempPin(next);
   };
 
   // ---- Screen 1: pick a role tile ------------------------------------
