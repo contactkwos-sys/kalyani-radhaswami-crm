@@ -44,3 +44,7 @@ next-env.d.ts
 # Local Netlify folder
 .netlify
 .env*.local
+
+# Next.js agent rule stubs
+AGENTS.md
+CLAUDE.md
