@@ -20,7 +20,11 @@ export async function POST(request: Request) {
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: 401 });
     }
-    return NextResponse.json({ ok: true, role: result.role });
+    return NextResponse.json({
+      ok: true,
+      role: result.role,
+      mustChangePin: result.mustChangePin,
+    });
   } catch {
     return NextResponse.json(
       { error: "Unable to sign in. Please try again." },

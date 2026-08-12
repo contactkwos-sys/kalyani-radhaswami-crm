@@ -19,7 +19,7 @@ export async function requireBackupAccess(
     return profile;
   }
 
-  if (profile.role === "OWNER" || profile.role === "ADMIN") {
+  if (["OWNER","CEO_1","CEO_2","CEO_3","ADMIN"].includes(profile.role)) {
     return profile;
   }
 

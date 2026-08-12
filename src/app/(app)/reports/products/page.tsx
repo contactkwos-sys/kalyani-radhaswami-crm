@@ -20,7 +20,7 @@ export default async function ProductPerformancePage({
     redirect("/login");
   }
   if (
-    !["OWNER", "ADMIN", "SALES_MANAGER", "ACCOUNTANT"].includes(ctx.profile.role)
+    !["OWNER", "CEO_1", "CEO_2", "CEO_3", "ADMIN", "SALES_MANAGER", "ACCOUNTANT"].includes(ctx.profile.role)
   ) {
     redirect("/dashboard");
   }

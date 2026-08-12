@@ -14,7 +14,7 @@ function emptyToNull(v: unknown) {
 
 async function requireSalesEnterer() {
   const profile = await requireProfile();
-  if (!["OWNER", "ADMIN", "ACCOUNTANT"].includes(profile.role)) {
+  if (!["OWNER", "CEO_1", "CEO_2", "CEO_3", "ADMIN", "ACCOUNTANT"].includes(profile.role)) {
     throw new Error("Forbidden: only Accountant/Owner/Admin can enter sales");
   }
   return profile;
@@ -295,7 +295,7 @@ export async function upsertSalesmanTarget(input: {
 
 export async function confirmIncentives(salesmanId: string, yearMonth: string) {
   const profile = await requireProfile();
-  if (!["OWNER", "ADMIN"].includes(profile.role)) throw new Error("Forbidden");
+  if (!["OWNER", "CEO_1", "CEO_2", "CEO_3", "ADMIN"].includes(profile.role)) throw new Error("Forbidden");
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("crm_incentive_calculations")

@@ -8,7 +8,7 @@ import type { DevStatus, IncentiveRule } from "@/types/sales";
 
 async function requireOwnerAdmin() {
   const profile = await requireProfile();
-  if (!["OWNER", "ADMIN"].includes(profile.role)) throw new Error("Forbidden");
+  if (!["OWNER", "CEO_1", "CEO_2", "CEO_3", "ADMIN"].includes(profile.role)) throw new Error("Forbidden");
   return profile;
 }
 
@@ -117,7 +117,7 @@ export async function setPartyProductDevelopment(input: {
 }) {
   const profile = await requireProfile();
   if (
-    !["OWNER", "ADMIN", "SALES_MANAGER", "SALESMAN"].includes(profile.role)
+    !["OWNER", "CEO_1", "CEO_2", "CEO_3", "ADMIN", "SALES_MANAGER", "SALESMAN"].includes(profile.role)
   ) {
     throw new Error("Forbidden");
   }

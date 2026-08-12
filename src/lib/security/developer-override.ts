@@ -389,7 +389,7 @@ export async function verifyDeveloperOverride(params: {
 /** Owner (any) or Owner/Developer for routine user management without override. */
 export async function requireOwnerOrAdminManager(): Promise<Profile> {
   const profile = await requireProfile();
-  if (profile.role !== "OWNER" && profile.role !== "ADMIN") {
+  if (!["OWNER","CEO_1","CEO_2","CEO_3","ADMIN"].includes(profile.role)) {
     throw new Error("FORBIDDEN");
   }
   return profile;

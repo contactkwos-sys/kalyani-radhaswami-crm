@@ -14,7 +14,7 @@ export default async function InactiveReportPage() {
   } catch {
     redirect("/login");
   }
-  if (!["OWNER", "ADMIN", "SALES_MANAGER"].includes(ctx.profile.role)) {
+  if (!["OWNER", "CEO_1", "CEO_2", "CEO_3", "ADMIN", "SALES_MANAGER"].includes(ctx.profile.role)) {
     redirect("/dashboard");
   }
   const { inactive, highVisit, settings } = await getInactiveAndHighVisitReport(

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -27,7 +28,11 @@ export function LoginForm() {
         setLoading(false);
         return;
       }
-      router.replace("/dashboard");
+      if (data.mustChangePin) {
+        router.replace("/settings/account?forced=1");
+      } else {
+        router.replace("/dashboard");
+      }
       router.refresh();
     } catch {
       setError("Unable to sign in. Please try again.");
@@ -46,7 +51,7 @@ export function LoginForm() {
           inputMode="numeric"
           required
           autoComplete="tel"
-          placeholder="10-digit mobile"
+          placeholder="10-digit mobile number"
           value={mobile}
           onChange={(e) => setMobile(e.target.value)}
           className="w-full rounded-md border border-[var(--border)] bg-white px-3 py-3 text-base text-[var(--ink)] outline-none focus:border-[var(--accent)]"
@@ -62,7 +67,7 @@ export function LoginForm() {
           required
           autoComplete="one-time-code"
           maxLength={8}
-          placeholder="4–8 digit PIN"
+          placeholder="• • • •"
           value={pin}
           onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 8))}
           className="w-full rounded-md border border-[var(--border)] bg-white px-3 py-3 text-base tracking-[0.3em] text-[var(--ink)] outline-none focus:border-[var(--accent)]"
@@ -89,6 +94,12 @@ export function LoginForm() {
       >
         {loading ? "Signing in…" : "Login"}
       </button>
+      <Link
+        href="/forgot-pin"
+        className="text-center text-sm font-medium text-[var(--accent)] hover:underline"
+      >
+        Forgot PIN
+      </Link>
     </form>
   );
 }

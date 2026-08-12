@@ -9,6 +9,7 @@ import {
 import {
   revokeAllDevicesAndSessions,
 } from "@/lib/auth/mobile-login";
+import { canResetOtherUserPin } from "@/lib/auth/roles";
 import {
   assertCanModifyPrimaryOwner,
   loadDeveloperProfile,
@@ -20,6 +21,9 @@ import {
 import type { AppRole, CompanyScope, Profile } from "@/types/database";
 
 const MANAGEABLE_ROLES: AppRole[] = [
+  "CEO_1",
+  "CEO_2",
+  "CEO_3",
   "ADMIN",
   "SALES_MANAGER",
   "SALESMAN",
@@ -148,6 +152,7 @@ export async function createCrmUser(input: {
       pin_updated_at: new Date().toISOString(),
       failed_attempts: 0,
       locked_until: null,
+      must_change_pin: true,
     });
     if (loginErr) {
       await auditAdmin(input.actor.id, "USER_CREATED_PARTIAL", userId, {
@@ -397,6 +402,20 @@ export async function ownerResetUserPin(input: {
   const target = await loadDeveloperProfile(input.userId);
   if (!target) return { ok: false, error: "User not found." };
 
+  const actorIsDeveloper = Boolean(
+    "is_developer" in input.actor &&
+      input.actor.is_developer &&
+      input.actor.role === "OWNER"
+  );
+  if (
+    !canResetOtherUserPin(input.actor.role, target.role, { actorIsDeveloper })
+  ) {
+    return {
+      ok: false,
+      error: "You are not authorised to reset this user's PIN.",
+    };
+  }
+
   const admin = createServiceClient();
   const { data: existing } = await admin
     .from("crm_user_login")
@@ -436,6 +455,7 @@ export async function ownerResetUserPin(input: {
         pin_updated_at: now,
         failed_attempts: 0,
         locked_until: null,
+        must_change_pin: true,
       })
       .eq("user_id", input.userId);
     if (error) return { ok: false, error: error.message };
@@ -445,11 +465,23 @@ export async function ownerResetUserPin(input: {
       mobile_number: mobile,
       pin_hash,
       pin_updated_at: now,
+      must_change_pin: true,
     });
     if (error) return { ok: false, error: error.message };
   }
 
   await admin.from("crm_profiles").update({ mobile }).eq("id", input.userId);
+
+  // Close any pending forgot-PIN tickets for this mobile/user
+  await admin
+    .from("crm_pin_reset_requests")
+    .update({
+      status: "FULFILLED",
+      fulfilled_by: input.actor.id,
+      fulfilled_at: now,
+    })
+    .eq("status", "PENDING")
+    .or(`user_id.eq.${input.userId},mobile_number.eq.${mobile}`);
 
   // Invalidate remembered devices + global Supabase sessions
   await revokeAllDevicesAndSessions(

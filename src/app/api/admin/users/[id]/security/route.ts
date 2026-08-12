@@ -80,6 +80,9 @@ async function targetIsPrivileged(userId: string): Promise<boolean> {
   if (!data) return false;
   return (
     data.role === "OWNER" ||
+    data.role === "CEO_1" ||
+    data.role === "CEO_2" ||
+    data.role === "CEO_3" ||
     data.role === "ADMIN" ||
     Boolean(data.is_primary_owner)
   );

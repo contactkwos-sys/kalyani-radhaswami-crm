@@ -35,6 +35,9 @@ type SecurityMeta = {
 };
 
 const ROLES = [
+  "CEO_1",
+  "CEO_2",
+  "CEO_3",
   "ADMIN",
   "SALES_MANAGER",
   "SALESMAN",
@@ -120,7 +123,9 @@ export function UserSecurityPanel({
   const locked =
     Boolean(user.locked_until) &&
     new Date(user.locked_until as string).getTime() > now;
-  const privileged = user.role === "OWNER" || user.role === "ADMIN";
+  const privileged = ["OWNER", "CEO_1", "CEO_2", "CEO_3", "ADMIN"].includes(
+    user.role
+  );
 
   return (
     <div className="space-y-6">

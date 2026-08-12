@@ -14,7 +14,7 @@ export default async function IncentiveSettingsPage() {
   } catch {
     redirect("/login");
   }
-  if (!["OWNER", "ADMIN"].includes(ctx.profile.role)) redirect("/dashboard");
+  if (!["OWNER", "CEO_1", "CEO_2", "CEO_3", "ADMIN"].includes(ctx.profile.role)) redirect("/dashboard");
 
   const [rules, products] = await Promise.all([
     listIncentiveRules(ctx.selectedCompanyIds),

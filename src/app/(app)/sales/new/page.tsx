@@ -10,7 +10,7 @@ export default async function NewSalesPage() {
   } catch {
     redirect("/login");
   }
-  if (!["OWNER", "ADMIN", "ACCOUNTANT"].includes(ctx.profile.role)) {
+  if (!["OWNER", "CEO_1", "CEO_2", "CEO_3", "ADMIN", "ACCOUNTANT"].includes(ctx.profile.role)) {
     redirect("/sales");
   }
 

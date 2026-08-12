@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "db:migrate": "node scripts/apply-migration.js",
     "db:seed-owner": "node scripts/seed-owner.js",
+    "db:bootstrap-developer-pin": "node scripts/bootstrap-developer-pin.js",
     "verify:phase123": "node scripts/verify-phase123.js",
     "verify:phase4": "node scripts/verify-phase4.js",
     "verify:phase5": "node scripts/verify-phase5.js",

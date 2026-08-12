@@ -5,7 +5,9 @@ import { TrialBanner } from "@/components/license/TrialBanner";
 import { MobileBottomNav } from "@/components/mobile/MobileBottomNav";
 import { GlobalSearch } from "@/components/intelligence/GlobalSearch";
 import type { Company, LicenseView, Profile } from "@/types/database";
+import { ROLE_PERMISSIONS } from "@/types/database";
 import { SignOutButton } from "@/components/auth/SignOutButton";
+import { isExecutiveRole } from "@/lib/auth/roles";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard" },
@@ -45,6 +47,10 @@ export function AppShell({
   licenses: LicenseView[];
   children: React.ReactNode;
 }) {
+  const roleLabel = ROLE_PERMISSIONS[profile.role]?.label || profile.role;
+  const isExec = isExecutiveRole(profile.role);
+  const canSearch = isExec || profile.role === "SALES_MANAGER";
+
   return (
     <div className="flex min-h-screen flex-col bg-[var(--bg)]">
       <TrialBanner licenses={licenses} />
@@ -59,7 +65,7 @@ export function AppShell({
             </h1>
           </div>
           <div className="flex flex-wrap items-center gap-4">
-            {["OWNER", "ADMIN", "SALES_MANAGER"].includes(profile.role) && (
+            {canSearch && (
               <div className="hidden md:block">
                 <GlobalSearch />
               </div>
@@ -67,7 +73,10 @@ export function AppShell({
             <CompanySwitcher profile={profile} companies={companies} />
             <div className="text-right text-sm">
               <p className="font-medium text-[var(--ink)]">{profile.full_name}</p>
-              <p className="text-xs text-[var(--muted)]">{profile.role}</p>
+              <p className="text-xs text-[var(--muted)]">
+                {roleLabel}
+                {profile.is_developer ? " · Developer" : ""}
+              </p>
             </div>
             <SignOutButton />
           </div>
@@ -76,12 +85,18 @@ export function AppShell({
           {NAV.filter((item) => {
             if ("ownerOnly" in item && item.ownerOnly)
               return profile.role === "OWNER";
-            if ("ownerAdmin" in item && item.ownerAdmin)
-              return profile.role === "OWNER" || profile.role === "ADMIN";
+            if ("ownerAdmin" in item && item.ownerAdmin) return isExec;
             if ("management" in item && item.management)
-              return ["OWNER", "ADMIN", "SALES_MANAGER", "ACCOUNTANT", "VIEWER"].includes(
-                profile.role
-              );
+              return [
+                "OWNER",
+                "CEO_1",
+                "CEO_2",
+                "CEO_3",
+                "ADMIN",
+                "SALES_MANAGER",
+                "ACCOUNTANT",
+                "VIEWER",
+              ].includes(profile.role);
             return true;
           }).map((item) => (
             <Link

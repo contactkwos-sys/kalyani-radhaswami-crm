@@ -24,6 +24,7 @@ type LoginRow = {
   locked_until: string | null;
   last_login_at: string | null;
   pin_updated_at: string;
+  must_change_pin?: boolean;
 };
 
 async function audit(
@@ -65,7 +66,10 @@ export async function loginWithMobilePin(input: {
   remember: boolean;
   userAgent?: string | null;
   ipAddress?: string | null;
-}): Promise<{ ok: true; role: AppRole } | { ok: false; error: string }> {
+}): Promise<
+  | { ok: true; role: AppRole; mustChangePin: boolean }
+  | { ok: false; error: string }
+> {
   const mobile = normalizeMobile(input.mobile);
   if (!mobile) return { ok: false, error: "Enter a valid mobile number." };
   if (!input.pin || !isValidPin(input.pin)) {
@@ -76,7 +80,7 @@ export async function loginWithMobilePin(input: {
   const { data: login, error } = await admin
     .from("crm_user_login")
     .select(
-      "user_id, mobile_number, pin_hash, failed_attempts, locked_until, last_login_at, pin_updated_at"
+      "user_id, mobile_number, pin_hash, failed_attempts, locked_until, last_login_at, pin_updated_at, must_change_pin"
     )
     .eq("mobile_number", mobile)
     .maybeSingle();
@@ -154,9 +158,14 @@ export async function loginWithMobilePin(input: {
   await audit(row.user_id, "MOBILE_LOGIN_SUCCESS", {
     remember: input.remember,
     role: profile.role,
+    must_change_pin: Boolean(row.must_change_pin),
   });
 
-  return { ok: true, role: profile.role as AppRole };
+  return {
+    ok: true,
+    role: profile.role as AppRole,
+    mustChangePin: Boolean(row.must_change_pin),
+  };
 }
 
 async function registerTrustedDevice(opts: {
@@ -167,12 +176,16 @@ async function registerTrustedDevice(opts: {
   const token = newDeviceToken();
   const tokenHash = hashDeviceToken(token);
   const admin = createServiceClient();
+  const expiresAt = new Date(
+    Date.now() + DEVICE_MAX_AGE_DAYS * 24 * 60 * 60 * 1000
+  );
   await admin.from("crm_auth_devices").insert({
     user_id: opts.userId,
     token_hash: tokenHash,
     device_label: summarizeUserAgent(opts.userAgent),
     user_agent: opts.userAgent || null,
     ip_address: opts.ipAddress || null,
+    expires_at: expiresAt.toISOString(),
   });
   const jar = await cookies();
   jar.set(DEVICE_COOKIE, token, {
@@ -220,12 +233,30 @@ export async function tryRestoreTrustedDeviceSession(): Promise<boolean> {
   const tokenHash = hashDeviceToken(token);
   const { data: device } = await admin
     .from("crm_auth_devices")
-    .select("id, user_id, revoked_at")
+    .select("id, user_id, revoked_at, expires_at")
     .eq("token_hash", tokenHash)
     .maybeSingle();
 
   if (!device || device.revoked_at) {
     await clearDeviceCookie();
+    return false;
+  }
+
+  if (
+    device.expires_at &&
+    new Date(device.expires_at).getTime() <= Date.now()
+  ) {
+    await admin
+      .from("crm_auth_devices")
+      .update({
+        revoked_at: new Date().toISOString(),
+      })
+      .eq("id", device.id)
+      .is("revoked_at", null);
+    await clearDeviceCookie();
+    await audit(device.user_id, "DEVICE_SESSION_EXPIRED", {
+      device_id: device.id,
+    });
     return false;
   }
 
@@ -333,6 +364,7 @@ export async function changeOwnPin(input: {
       pin_updated_at: new Date().toISOString(),
       failed_attempts: 0,
       locked_until: null,
+      must_change_pin: false,
     })
     .eq("user_id", input.userId);
 
@@ -394,6 +426,7 @@ export async function adminSetUserPin(input: {
         pin_updated_at: new Date().toISOString(),
         failed_attempts: 0,
         locked_until: null,
+        must_change_pin: true,
       })
       .eq("user_id", input.userId);
   } else {
@@ -401,6 +434,7 @@ export async function adminSetUserPin(input: {
       user_id: input.userId,
       mobile_number: mobile,
       pin_hash,
+      must_change_pin: true,
     });
   }
 
@@ -567,9 +601,108 @@ export async function listDevicesForUser(userId: string) {
   const { data } = await admin
     .from("crm_auth_devices")
     .select(
-      "id, device_label, user_agent, ip_address, last_seen_at, created_at, revoked_at"
+      "id, device_label, user_agent, ip_address, last_seen_at, created_at, revoked_at, expires_at"
     )
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
   return data || [];
+}
+
+export async function userMustChangePin(userId: string): Promise<boolean> {
+  const admin = createServiceClient();
+  const { data } = await admin
+    .from("crm_user_login")
+    .select("must_change_pin")
+    .eq("user_id", userId)
+    .maybeSingle();
+  return Boolean(data?.must_change_pin);
+}
+
+/**
+ * Secure Forgot PIN: never reveals the existing PIN.
+ * Creates an admin ticket; rate-limits by mobile.
+ */
+export async function requestForgotPin(input: {
+  mobile: string;
+  userAgent?: string | null;
+  ipAddress?: string | null;
+}): Promise<{ ok: true; message: string } | { ok: false; error: string }> {
+  const mobile = normalizeMobile(input.mobile);
+  if (!mobile) return { ok: false, error: "Enter a valid mobile number." };
+
+  const admin = createServiceClient();
+  const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const { count } = await admin
+    .from("crm_pin_reset_requests")
+    .select("id", { count: "exact", head: true })
+    .eq("mobile_number", mobile)
+    .gte("created_at", since);
+
+  if ((count || 0) >= 3) {
+    await audit(null, "FORGOT_PIN_RATE_LIMITED", { mobile_suffix: mobile.slice(-4) });
+    // Generic message — do not leak account existence
+    return {
+      ok: true,
+      message:
+        "If this mobile is registered, a secure PIN reset request was submitted. Contact your Admin or Owner — the existing PIN is never revealed.",
+    };
+  }
+
+  const { data: login } = await admin
+    .from("crm_user_login")
+    .select("user_id")
+    .eq("mobile_number", mobile)
+    .maybeSingle();
+
+  await admin.from("crm_pin_reset_requests").insert({
+    mobile_number: mobile,
+    user_id: login?.user_id || null,
+    status: "PENDING",
+    requested_ip: input.ipAddress || null,
+    requested_user_agent: input.userAgent || null,
+  });
+
+  await audit(login?.user_id || null, "FORGOT_PIN_REQUESTED", {
+    mobile_suffix: mobile.slice(-4),
+    known_account: Boolean(login),
+  });
+
+  return {
+    ok: true,
+    message:
+      "If this mobile is registered, a secure PIN reset request was submitted. Contact your Admin or Owner — the existing PIN is never revealed.",
+  };
+}
+
+export async function listPendingPinResetRequests() {
+  const admin = createServiceClient();
+  const { data } = await admin
+    .from("crm_pin_reset_requests")
+    .select(
+      "id, mobile_number, user_id, status, created_at, expires_at, requested_ip"
+    )
+    .eq("status", "PENDING")
+    .gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false })
+    .limit(50);
+  return data || [];
+}
+
+export async function fulfillPinResetRequest(input: {
+  adminId: string;
+  requestId: string;
+}) {
+  const admin = createServiceClient();
+  await admin
+    .from("crm_pin_reset_requests")
+    .update({
+      status: "FULFILLED",
+      fulfilled_by: input.adminId,
+      fulfilled_at: new Date().toISOString(),
+    })
+    .eq("id", input.requestId)
+    .eq("status", "PENDING");
+  await audit(input.adminId, "FORGOT_PIN_FULFILLED", {
+    request_id: input.requestId,
+  });
 }

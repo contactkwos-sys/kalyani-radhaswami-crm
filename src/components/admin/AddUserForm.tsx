@@ -4,6 +4,9 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 const ROLES = [
+  "CEO_1",
+  "CEO_2",
+  "CEO_3",
   "ADMIN",
   "SALES_MANAGER",
   "SALESMAN",

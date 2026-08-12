@@ -44,7 +44,7 @@ export default async function DashboardPage({
     getOwnerDashboard(ctx.filters),
     getChartSeries(ctx.filters),
     getManagementAlerts(ctx.filters.companyIds),
-    ctx.profile.role === "OWNER" || ctx.profile.role === "ADMIN"
+    ["OWNER","CEO_1","CEO_2","CEO_3","ADMIN"].includes(ctx.profile.role)
       ? getBackupHealth().catch(() => null)
       : Promise.resolve(null),
   ]);

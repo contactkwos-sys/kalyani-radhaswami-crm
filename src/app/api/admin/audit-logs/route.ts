@@ -9,7 +9,7 @@ import { listAuditLogs } from "@/lib/security/user-admin";
 export async function GET(request: Request) {
   try {
     const profile = await requireProfile();
-    if (profile.role !== "OWNER" && profile.role !== "ADMIN") {
+    if (!["OWNER","CEO_1","CEO_2","CEO_3","ADMIN"].includes(profile.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

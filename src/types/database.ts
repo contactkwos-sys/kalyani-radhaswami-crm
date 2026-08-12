@@ -2,6 +2,9 @@
 
 export type AppRole =
   | "OWNER"
+  | "CEO_1"
+  | "CEO_2"
+  | "CEO_3"
   | "ADMIN"
   | "SALES_MANAGER"
   | "SALESMAN"
@@ -134,12 +137,39 @@ export const ROLE_PERMISSIONS: Record<
   }
 > = {
   OWNER: {
-    label: "Owner",
+    label: "CEO / Owner",
     canManageMasters: true,
     canEnterSales: true,
     canManageUsers: true,
     canViewAll: true,
     canOverride: true,
+    readOnly: false,
+  },
+  CEO_1: {
+    label: "CEO 1",
+    canManageMasters: true,
+    canEnterSales: true,
+    canManageUsers: true,
+    canViewAll: true,
+    canOverride: false,
+    readOnly: false,
+  },
+  CEO_2: {
+    label: "CEO 2",
+    canManageMasters: true,
+    canEnterSales: true,
+    canManageUsers: true,
+    canViewAll: true,
+    canOverride: false,
+    readOnly: false,
+  },
+  CEO_3: {
+    label: "CEO 3",
+    canManageMasters: true,
+    canEnterSales: true,
+    canManageUsers: true,
+    canViewAll: true,
+    canOverride: false,
     readOnly: false,
   },
   ADMIN: {
