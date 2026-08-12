@@ -145,7 +145,7 @@ export function AddUserForm({
     >
       <h3 className="font-semibold">Add user</h3>
       <p className="text-xs text-[var(--muted)]">
-        Creates a real database login. Users sign in with Mobile Number + PIN
+        Creates a real database login. After seeding app_users, they sign in with role tile + PIN
         only — no email/password on the login screen.
         {actorIsDeveloper
           ? " Developer identity stays hidden from normal CEO lists."

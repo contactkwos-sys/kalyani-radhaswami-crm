@@ -1,0 +1,8 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[functions]
+  directory = "netlify/functions"
+
+# Also keep pack copies at /api/*.js for reference / alternate mounts.

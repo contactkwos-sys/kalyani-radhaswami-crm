@@ -21,7 +21,7 @@ export default async function CompanySettingsPage() {
         </h2>
         <p className="mt-1 text-sm text-[var(--muted)]">
           Every business record is scoped by company_id. Owner can switch
-          between Kalyani Thread, Radhaswami Thread, or All Companies.
+          between Kalyani, Radhaswami, or All Companies.
         </p>
       </div>
 
