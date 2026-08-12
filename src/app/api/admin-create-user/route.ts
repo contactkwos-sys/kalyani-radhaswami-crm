@@ -36,11 +36,25 @@ export async function POST(request: Request) {
     const password = `${tempPin}-${loginSlug}-${PEPPER}`;
     const supabaseAdmin = createServiceClient();
 
+    const crmRoleByLogin: Record<string, string> = {
+      admin: "ADMIN",
+      ceo: "CEO_1",
+      accountant: "ACCOUNTANT",
+      salesman: "SALESMAN",
+    };
+    const crmRole = crmRoleByLogin[role] || "VIEWER";
+
     const { data: authUser, error: authErr } =
       await supabaseAdmin.auth.admin.createUser({
         email: `${loginSlug}@internal.kwos.local`,
         password,
         email_confirm: true,
+        user_metadata: {
+          app: "crm",
+          crm: "true",
+          role: crmRole,
+          full_name: displayName,
+        },
       });
     if (authErr) {
       return NextResponse.json({ error: authErr.message }, { status: 400 });
@@ -58,6 +72,18 @@ export async function POST(request: Request) {
       await supabaseAdmin.auth.admin.deleteUser(authUser.user!.id);
       return NextResponse.json({ error: rowErr.message }, { status: 400 });
     }
+
+    // Ensure CRM profile exists even if auth trigger already ran / skipped
+    await supabaseAdmin.from("crm_profiles").upsert(
+      {
+        id: authUser.user!.id,
+        email: `${loginSlug}@internal.kwos.local`,
+        full_name: displayName,
+        role: crmRole,
+        is_active: true,
+      },
+      { onConflict: "id" }
+    );
 
     return NextResponse.json({ ok: true, id: authUser.user!.id });
   } catch (e) {

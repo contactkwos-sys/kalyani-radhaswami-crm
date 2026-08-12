@@ -39,7 +39,23 @@ Support: contact.kwos@gmail.com · WhatsApp: [98250-63-208](https://wa.me/982506
    - If `OWNER_MOBILE` is set and `OWNER_LOGIN_PIN` is omitted, a temporary 6-digit PIN is **auto-generated** and printed once
    - Or bootstrap only the developer mobile PIN: `DEVELOPER_LOGIN_PIN=... OWNER_MOBILE=... npm run db:bootstrap-developer-pin`
    - Admin → Users: leave Temporary PIN blank (or click **Auto-generate PIN**) to create a one-time temporary PIN
-4. `npm run dev`
+4. Seed role-tile logins (Admin / CEO / Accountant / Salesmen): `npm run db:seed-login-tiles`
+5. `npm run dev`
+
+### Netlify production (must match CRM Supabase)
+
+Site: `https://kalyani-radhaswami-crm.netlify.app`
+
+Set these in **Netlify → Site settings → Environment variables**, then **Clear cache and deploy site**:
+
+| Variable | Value |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://ixulyhomqtajenigopai.supabase.co` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` or `SUPABASE_PUBLISHABLE_KEY` | publishable/anon key for **that** project |
+| `SUPABASE_SERVICE_ROLE_KEY` | service_role key for **that** project |
+| `DEV_OVERRIDE_KEY` | same secret you type in `/__kwos_setup` |
+
+Wrong project URL (e.g. a different `*.supabase.co`) makes login look broken while CRM data still exists elsewhere.
 
 CRM tables are namespaced `crm_*` so they coexist with other apps on the shared Supabase project.
 

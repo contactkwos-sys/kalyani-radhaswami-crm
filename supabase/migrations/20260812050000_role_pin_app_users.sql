@@ -89,6 +89,40 @@ $$;
 REVOKE ALL ON FUNCTION public.get_my_role() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_my_role() TO authenticated;
 
+-- Login tiles for anon (SECURITY DEFINER bypasses app_users deny-all RLS).
+-- Client: supabase.rpc("list_login_users") — no parameters.
+CREATE OR REPLACE FUNCTION public.list_login_users()
+RETURNS TABLE (
+  id UUID,
+  login_slug TEXT,
+  display_name TEXT,
+  role TEXT,
+  pin_is_set BOOLEAN,
+  sort_order INTEGER
+)
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+  SELECT
+    u.id,
+    u.login_slug,
+    u.display_name,
+    u.role,
+    u.pin_is_set,
+    u.sort_order
+  FROM public.app_users u
+  WHERE u.is_active = TRUE
+  ORDER BY u.sort_order ASC, u.display_name ASC;
+$$;
+
+REVOKE ALL ON FUNCTION public.list_login_users() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.list_login_users() TO anon, authenticated;
+
+COMMENT ON FUNCTION public.list_login_users() IS
+  'Public role-tile list for login. Safe columns only; no PIN/password.';
+
 COMMENT ON TABLE public.app_users IS
   'Role-tile login identities. Auth password is PIN-derived in the client; pin_is_set only.';
 
