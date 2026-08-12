@@ -58,6 +58,7 @@ export function UserSecurityPanel({
   const router = useRouter();
   const [mobile, setMobile] = useState(user.mobile_number || "");
   const [newPin, setNewPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
   const [role, setRole] = useState(user.role);
   const [devices, setDevices] = useState(initialDevices);
   const [message, setMessage] = useState<string | null>(null);
@@ -142,15 +143,13 @@ export function UserSecurityPanel({
       <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 space-y-2 text-sm">
         <h3 className="font-semibold">User</h3>
         <p>
-          {user.full_name} · {user.role} · {user.email}
+          {user.full_name} · {user.role}
         </p>
         <p>
           Status:{" "}
           <span className={user.is_active ? "text-emerald-700" : "text-red-700"}>
             {user.is_active ? "Active" : "Disabled"}
           </span>
-          {user.is_primary_owner ? " · Primary Owner (protected)" : ""}
-          {user.is_developer ? " · Developer" : ""}
         </p>
         <p>
           Last login:{" "}
@@ -215,9 +214,9 @@ export function UserSecurityPanel({
       <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 space-y-3">
         <h3 className="font-semibold">Reset PIN</h3>
         <p className="text-sm text-[var(--muted)]">
-          Enter a temporary PIN, or auto-generate one. Existing PIN is never
-          shown. Remembered devices and sessions are revoked; the user must log
-          in again.
+          Enter a new PIN and confirm it, or auto-generate one. The existing PIN
+          is never shown. Remembered devices and sessions are revoked; the user
+          can log in immediately with the new PIN.
         </p>
         <input
           type="password"
@@ -230,17 +229,36 @@ export function UserSecurityPanel({
           }
           className="w-full max-w-sm rounded-md border border-[var(--border)] px-3 py-2 text-sm tracking-[0.25em]"
         />
+        <input
+          type="password"
+          inputMode="numeric"
+          maxLength={8}
+          placeholder="Confirm new PIN"
+          value={confirmPin}
+          onChange={(e) =>
+            setConfirmPin(e.target.value.replace(/\D/g, "").slice(0, 8))
+          }
+          className="w-full max-w-sm rounded-md border border-[var(--border)] px-3 py-2 text-sm tracking-[0.25em]"
+        />
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={pending || newPin.length < 4}
-            onClick={() =>
+            disabled={
+              pending ||
+              newPin.length < 4 ||
+              newPin !== confirmPin
+            }
+            onClick={() => {
+              if (newPin !== confirmPin) {
+                setError("New PIN and confirmation do not match.");
+                return;
+              }
               run(
                 privileged ? "force_pin_reset" : "reset_pin",
                 { newPin, mobile },
-                { requireOverride: privileged && security.actorIsDeveloper }
-              )
-            }
+                { requireOverride: privileged && security.actorIsDeveloper && Boolean(user.is_primary_owner) }
+              );
+            }}
             className="rounded-md bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
           >
             Reset PIN
@@ -259,7 +277,7 @@ export function UserSecurityPanel({
               run(
                 privileged ? "force_generate_pin" : "generate_pin",
                 { mobile, autoGenerate: true },
-                { requireOverride: privileged && security.actorIsDeveloper }
+                { requireOverride: privileged && security.actorIsDeveloper && Boolean(user.is_primary_owner) }
               );
             }}
             className="rounded-md border px-3 py-2 text-sm font-semibold disabled:opacity-60"

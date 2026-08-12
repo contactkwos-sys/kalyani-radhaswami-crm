@@ -8,22 +8,27 @@ import {
   listUsersForAdmin,
 } from "@/lib/auth/mobile-login";
 import {
-  isOverrideConfigured,
-  loadDeveloperProfile,
-} from "@/lib/security/developer-override";
+  displayProfileName,
+  displayRoleLabel,
+  isDeveloperIdentity,
+} from "@/lib/auth/display";
+import { canManageUsersModule } from "@/lib/auth/modules";
+import { isOverrideConfigured } from "@/lib/security/developer-override";
 import { ROLE_PERMISSIONS } from "@/types/database";
 
 export default async function UsersManagementPage() {
   const profile = await getCurrentProfile();
   if (!profile) redirect("/login");
-  if (!ROLE_PERMISSIONS[profile.role].canManageUsers) redirect("/dashboard");
+  if (
+    !ROLE_PERMISSIONS[profile.role].canManageUsers ||
+    !canManageUsersModule(profile)
+  ) {
+    redirect("/dashboard");
+  }
 
-  const users = await listUsersForAdmin();
+  const actorIsDeveloper = isDeveloperIdentity(profile);
+  const users = await listUsersForAdmin({ viewerIsDeveloper: actorIsDeveloper });
   const pendingResets = await listPendingPinResetRequests();
-  const actor = await loadDeveloperProfile(profile.id);
-  const actorIsDeveloper = Boolean(
-    actor?.role === "OWNER" && actor.is_developer
-  );
 
   return (
     <div className="space-y-6">
@@ -36,8 +41,9 @@ export default async function UsersManagementPage() {
             Users
           </h2>
           <p className="mt-1 text-sm text-[var(--muted)]">
-            Manage users, roles, mobile + PIN login, sessions, and devices.
-            Destructive actions require Owner/Developer Override confirmation.
+            Create and configure business users with Mobile + PIN login, roles,
+            departments, and allowed modules. PIN values are never shown after
+            save.
           </p>
         </div>
         <div className="flex flex-wrap gap-3 text-sm">
@@ -71,9 +77,11 @@ export default async function UsersManagementPage() {
             <tr>
               <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3">Role</th>
+              <th className="px-4 py-3">Department</th>
               <th className="px-4 py-3">Mobile</th>
               <th className="px-4 py-3">PIN</th>
               <th className="px-4 py-3">Last login</th>
+              <th className="px-4 py-3">PIN changed</th>
               <th className="px-4 py-3">Devices</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Security</th>
@@ -83,23 +91,20 @@ export default async function UsersManagementPage() {
             {users.map((u) => (
               <tr key={u.id} className="border-t border-[var(--border)]">
                 <td className="px-4 py-3">
-                  <p className="font-medium">{u.full_name}</p>
-                  <p className="text-xs text-[var(--muted)]">{u.email}</p>
-                  {u.is_primary_owner ? (
-                    <p className="text-xs text-amber-800">Primary Owner</p>
-                  ) : null}
-                  {u.is_developer ? (
-                    <p className="text-xs text-amber-800">Developer</p>
-                  ) : null}
+                  <p className="font-medium">{displayProfileName(u)}</p>
                 </td>
-                <td className="px-4 py-3">
-                  {ROLE_PERMISSIONS[u.role]?.label || u.role}
-                </td>
+                <td className="px-4 py-3">{displayRoleLabel(u)}</td>
+                <td className="px-4 py-3">{u.department || "—"}</td>
                 <td className="px-4 py-3">{u.mobile_number || "—"}</td>
                 <td className="px-4 py-3">{u.has_pin ? "Set" : "Not set"}</td>
                 <td className="px-4 py-3 whitespace-nowrap">
                   {u.last_login_at
                     ? new Date(u.last_login_at).toLocaleString()
+                    : "—"}
+                </td>
+                <td className="px-4 py-3 whitespace-nowrap">
+                  {u.pin_changed_at
+                    ? new Date(u.pin_changed_at).toLocaleString()
                     : "—"}
                 </td>
                 <td className="px-4 py-3">{u.active_devices}</td>
@@ -111,7 +116,7 @@ export default async function UsersManagementPage() {
                     href={`/settings/users/${u.id}/security`}
                     className="font-semibold text-[var(--accent)] hover:underline"
                   >
-                    Security
+                    Reset PIN / Security
                   </Link>
                 </td>
               </tr>

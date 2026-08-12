@@ -16,7 +16,7 @@ async function main() {
   const email = process.env.OWNER_EMAIL || process.env.CRM_OWNER_EMAIL;
   const password = process.env.OWNER_PASSWORD || process.env.CRM_OWNER_PASSWORD;
   const fullName =
-    process.env.OWNER_NAME || process.env.CRM_OWNER_NAME || "Owner";
+    process.env.OWNER_NAME || process.env.CRM_OWNER_NAME || "System Administration";
   const mobileRaw = process.env.OWNER_MOBILE || process.env.CRM_OWNER_MOBILE || "";
   let ownerPin =
     process.env.OWNER_LOGIN_PIN ||

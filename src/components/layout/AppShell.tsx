@@ -5,35 +5,108 @@ import { TrialBanner } from "@/components/license/TrialBanner";
 import { MobileBottomNav } from "@/components/mobile/MobileBottomNav";
 import { GlobalSearch } from "@/components/intelligence/GlobalSearch";
 import type { Company, LicenseView, Profile } from "@/types/database";
-import { ROLE_PERMISSIONS } from "@/types/database";
 import { SignOutButton } from "@/components/auth/SignOutButton";
 import { isExecutiveRole } from "@/lib/auth/roles";
+import {
+  displayProfileName,
+  displayRoleLabel,
+  isDeveloperIdentity,
+} from "@/lib/auth/display";
+import { hasModuleAccess, type CrmModule } from "@/lib/auth/modules";
 
-const NAV = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/today", label: "Today" },
-  { href: "/follow-ups", label: "Follow-up" },
-  { href: "/sales", label: "Sales" },
-  { href: "/incentives", label: "Incentives" },
-  { href: "/reports", label: "Reports", management: true },
-  { href: "/alerts", label: "Alerts", ownerAdmin: true },
-  { href: "/intervention", label: "Intervention", ownerAdmin: true },
-  { href: "/reports/matrix", label: "Matrix", ownerAdmin: true },
-  { href: "/reports/daily-review", label: "Daily review", ownerAdmin: true },
-  { href: "/products", label: "Products" },
-  { href: "/salesmen", label: "Salesmen" },
-  { href: "/parties", label: "Parties" },
-  { href: "/assignments", label: "Assignments", ownerAdmin: true },
-  { href: "/settings/targets", label: "Targets", ownerAdmin: true },
-  { href: "/settings/incentives", label: "Incentive rules", ownerAdmin: true },
-  { href: "/settings/intelligence", label: "Intelligence", ownerAdmin: true },
-  { href: "/settings/backup", label: "Backup", ownerAdmin: true },
-  { href: "/settings/users", label: "Users", ownerAdmin: true },
-  { href: "/settings/audit-logs", label: "Audit", ownerAdmin: true },
-  { href: "/settings/account", label: "My PIN" },
-  { href: "/settings/company", label: "Company" },
-  { href: "/settings/license", label: "License" },
-  { href: "/settings/security", label: "Security", ownerOnly: true },
+const NAV: Array<{
+  href: string;
+  label: string;
+  module: CrmModule;
+  management?: boolean;
+  ownerAdmin?: boolean;
+  ownerOnly?: boolean;
+  developerOnly?: boolean;
+}> = [
+  { href: "/dashboard", label: "Dashboard", module: "dashboard" },
+  { href: "/today", label: "Today", module: "today" },
+  { href: "/follow-ups", label: "Follow-up", module: "followups" },
+  { href: "/sales", label: "Sales", module: "sales" },
+  { href: "/incentives", label: "Incentives", module: "incentives" },
+  { href: "/reports", label: "Reports", module: "reports", management: true },
+  { href: "/alerts", label: "Alerts", module: "alerts", ownerAdmin: true },
+  {
+    href: "/intervention",
+    label: "Intervention",
+    module: "intervention",
+    ownerAdmin: true,
+  },
+  {
+    href: "/reports/matrix",
+    label: "Matrix",
+    module: "reports",
+    ownerAdmin: true,
+  },
+  {
+    href: "/reports/daily-review",
+    label: "Daily review",
+    module: "reports",
+    ownerAdmin: true,
+  },
+  { href: "/products", label: "Products", module: "products" },
+  { href: "/salesmen", label: "Salesmen", module: "salesmen" },
+  { href: "/parties", label: "Parties", module: "parties" },
+  {
+    href: "/assignments",
+    label: "Assignments",
+    module: "assignments",
+    ownerAdmin: true,
+  },
+  {
+    href: "/settings/targets",
+    label: "Targets",
+    module: "targets",
+    ownerAdmin: true,
+  },
+  {
+    href: "/settings/incentives",
+    label: "Incentive rules",
+    module: "incentives",
+    ownerAdmin: true,
+  },
+  {
+    href: "/settings/intelligence",
+    label: "Intelligence",
+    module: "settings",
+    ownerAdmin: true,
+  },
+  {
+    href: "/settings/backup",
+    label: "Backup",
+    module: "backup",
+    ownerAdmin: true,
+  },
+  {
+    href: "/settings/users",
+    label: "Users",
+    module: "users",
+    ownerAdmin: true,
+  },
+  {
+    href: "/settings/audit-logs",
+    label: "Audit",
+    module: "audit",
+    ownerAdmin: true,
+  },
+  {
+    href: "/settings/account",
+    label: "Developer PIN",
+    module: "settings",
+    developerOnly: true,
+  },
+  { href: "/settings/company", label: "Company", module: "company" },
+  { href: "/settings/license", label: "License", module: "license" },
+  {
+    href: "/settings/security",
+    label: "Security",
+    module: "security",
+    ownerOnly: true,
+  },
 ];
 
 export function AppShell({
@@ -47,8 +120,10 @@ export function AppShell({
   licenses: LicenseView[];
   children: React.ReactNode;
 }) {
-  const roleLabel = ROLE_PERMISSIONS[profile.role]?.label || profile.role;
+  const roleLabel = displayRoleLabel(profile);
+  const displayName = displayProfileName(profile);
   const isExec = isExecutiveRole(profile.role);
+  const isDev = isDeveloperIdentity(profile);
   const canSearch = isExec || profile.role === "SALES_MANAGER";
 
   return (
@@ -72,22 +147,20 @@ export function AppShell({
             )}
             <CompanySwitcher profile={profile} companies={companies} />
             <div className="text-right text-sm">
-              <p className="font-medium text-[var(--ink)]">{profile.full_name}</p>
-              <p className="text-xs text-[var(--muted)]">
-                {roleLabel}
-                {profile.is_developer ? " · Developer" : ""}
-              </p>
+              <p className="font-medium text-[var(--ink)]">{displayName}</p>
+              <p className="text-xs text-[var(--muted)]">{roleLabel}</p>
             </div>
             <SignOutButton />
           </div>
         </div>
         <nav className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-4 pb-2">
           {NAV.filter((item) => {
-            if ("ownerOnly" in item && item.ownerOnly)
-              return profile.role === "OWNER";
-            if ("ownerAdmin" in item && item.ownerAdmin) return isExec;
-            if ("management" in item && item.management)
-              return [
+            if (item.developerOnly) return isDev;
+            if (item.ownerOnly) return profile.role === "OWNER" || isDev;
+            if (item.ownerAdmin && !isExec) return false;
+            if (
+              item.management &&
+              ![
                 "OWNER",
                 "CEO_1",
                 "CEO_2",
@@ -96,8 +169,11 @@ export function AppShell({
                 "SALES_MANAGER",
                 "ACCOUNTANT",
                 "VIEWER",
-              ].includes(profile.role);
-            return true;
+              ].includes(profile.role)
+            ) {
+              return false;
+            }
+            return hasModuleAccess(profile, item.module);
           }).map((item) => (
             <Link
               key={item.href}

@@ -29,6 +29,7 @@ export function LoginForm() {
         return;
       }
       if (data.mustChangePin) {
+        // Only system administration may self-rotate PIN.
         router.replace("/settings/account?forced=1");
       } else {
         router.replace("/dashboard");

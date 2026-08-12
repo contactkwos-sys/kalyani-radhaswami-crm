@@ -2,7 +2,7 @@
 
 Production CRM for **Kalyani Thread** and **Radhaswami Thread**.
 
-Built by Kumaresh Budhia · Support: contact.kwos@gmail.com · WhatsApp: [98250-63-208](https://wa.me/9825063208)
+Support: contact.kwos@gmail.com · WhatsApp: [98250-63-208](https://wa.me/9825063208)
 
 ## Stack
 
@@ -12,6 +12,7 @@ Built by Kumaresh Budhia · Support: contact.kwos@gmail.com · WhatsApp: [98250-
 - CEO / Owner, CEO 1–3, Admin, Manager, Salesman, Accountant hierarchy
 - Forgot PIN → secure admin reset tickets (never reveals existing PIN)
 - Server-side Owner Override PIN + Developer Override Key (never exposed to the browser)
+- Protected internal Developer / System Administration identity (never shown as Owner/CEO on the public UI)
 
 ## Phase status
 
@@ -33,7 +34,7 @@ Built by Kumaresh Budhia · Support: contact.kwos@gmail.com · WhatsApp: [98250-
    - `DEVELOPER_OVERRIDE_KEY` (long random secret — server only, never `NEXT_PUBLIC_*`)
    - `DEVELOPER_LOGIN_PIN` / `OWNER_LOGIN_PIN` (optional bootstrap for primary Owner mobile login — server only; forces PIN change after first login)
 2. Apply migration: `npm run db:migrate`
-3. Seed owner: `OWNER_EMAIL=... OWNER_PASSWORD=... OWNER_NAME="Kumaresh Budhia" OWNER_MOBILE=... OWNER_LOGIN_PIN=... npm run db:seed-owner`
+3. Seed owner: `OWNER_EMAIL=... OWNER_PASSWORD=... OWNER_NAME="System Administration" OWNER_MOBILE=... OWNER_LOGIN_PIN=... npm run db:seed-owner`
    - Seed marks the account as **primary Owner + Developer**
    - If `OWNER_MOBILE` is set and `OWNER_LOGIN_PIN` is omitted, a temporary 6-digit PIN is **auto-generated** and printed once
    - Or bootstrap only the developer mobile PIN: `DEVELOPER_LOGIN_PIN=... OWNER_MOBILE=... npm run db:bootstrap-developer-pin`

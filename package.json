@@ -17,8 +17,9 @@
     "verify:phase6": "node scripts/verify-phase6.js",
     "verify:mobile-pin": "node scripts/verify-mobile-pin.js",
     "verify:developer-override": "node scripts/verify-developer-override.js",
+    "verify:auth-e2e": "node scripts/verify-auth-e2e.js",
     "test:unit": "node --test scripts/unit/*.test.js",
-    "test:auth": "npm run test:unit && npm run verify:mobile-pin && npm run verify:developer-override"
+    "test:auth": "npm run test:unit && npm run verify:mobile-pin && npm run verify:developer-override && npm run verify:auth-e2e"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

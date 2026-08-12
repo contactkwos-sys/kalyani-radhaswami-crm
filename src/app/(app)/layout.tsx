@@ -5,6 +5,7 @@ import {
   getCurrentProfile,
 } from "@/lib/auth/session";
 import { userMustChangePin } from "@/lib/auth/mobile-login";
+import { isDeveloperIdentity } from "@/lib/auth/display";
 import { getLicensesForCompanies } from "@/lib/license/trial";
 
 export default async function AppLayout({
@@ -15,7 +16,8 @@ export default async function AppLayout({
   const profile = await getCurrentProfile();
   if (!profile) redirect("/login");
 
-  const mustChange = await userMustChangePin(profile.id);
+  const mustChange =
+    isDeveloperIdentity(profile) && (await userMustChangePin(profile.id));
 
   const companies = await getAccessibleCompanies(profile.id, profile.role);
   const licenses = await getLicensesForCompanies(companies.map((c) => c.id));
@@ -35,7 +37,6 @@ export default async function AppLayout({
       (l) => l.status === "TRIAL_EXPIRED" || l.status === "SUSPENDED"
     );
 
-  // Allow license/security settings even when trial expired (Owner activation path)
   return (
     <AppShell
       profile={profile}
@@ -44,9 +45,9 @@ export default async function AppLayout({
     >
       {mustChange ? (
         <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          You must change your temporary PIN.{" "}
+          You must change your temporary administrator PIN.{" "}
           <a href="/settings/account" className="font-semibold underline">
-            Change My PIN
+            Change PIN
           </a>
         </div>
       ) : null}
