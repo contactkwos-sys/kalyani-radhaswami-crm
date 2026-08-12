@@ -1,9 +1,17 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { ROLE_PERMISSIONS, type AppRole } from "@/types/database";
+import {
+  CRM_MODULES,
+  DEFAULT_MODULES_BY_ROLE,
+  MODULE_LABELS,
+  type CrmModule,
+} from "@/lib/auth/modules";
 
-const ROLES = [
+const ROLES: AppRole[] = [
+  "OWNER",
   "CEO_1",
   "CEO_2",
   "CEO_3",
@@ -12,27 +20,64 @@ const ROLES = [
   "SALESMAN",
   "ACCOUNTANT",
   "VIEWER",
-] as const;
+];
+
+const DEPARTMENTS = [
+  "Management",
+  "Sales",
+  "Accounts",
+  "Operations",
+  "Support",
+  "Other",
+];
 
 export function AddUserForm({
   actorIsDeveloper,
-  overrideConfigured,
 }: {
   actorIsDeveloper: boolean;
-  overrideConfigured: boolean;
+  overrideConfigured?: boolean;
 }) {
   const router = useRouter();
-  const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
-  const [role, setRole] = useState<string>("SALESMAN");
+  const [role, setRole] = useState<AppRole>("SALESMAN");
   const [mobile, setMobile] = useState("");
   const [pin, setPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [department, setDepartment] = useState("Sales");
   const [companyScope, setCompanyScope] = useState("KALYANI");
-  const [overrideKey, setOverrideKey] = useState("");
+  const [isActive, setIsActive] = useState(true);
+  const [modules, setModules] = useState<CrmModule[]>(
+    DEFAULT_MODULES_BY_ROLE.SALESMAN
+  );
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [generatedPin, setGeneratedPin] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+
+  const roleOptions = useMemo(
+    () =>
+      ROLES.filter((r) => {
+        if (r === "OWNER") return true;
+        return true;
+      }),
+    []
+  );
+
+  function onRoleChange(next: AppRole) {
+    setRole(next);
+    setModules(DEFAULT_MODULES_BY_ROLE[next] || ["dashboard"]);
+    if (next === "ACCOUNTANT") setDepartment("Accounts");
+    else if (next === "SALESMAN" || next === "SALES_MANAGER")
+      setDepartment("Sales");
+    else if (next === "OWNER" || next.startsWith("CEO"))
+      setDepartment("Management");
+  }
+
+  function toggleModule(mod: CrmModule) {
+    setModules((prev) =>
+      prev.includes(mod) ? prev.filter((m) => m !== mod) : [...prev, mod]
+    );
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -41,7 +86,10 @@ export function AddUserForm({
     setMessage(null);
     setGeneratedPin(null);
     try {
-      if (!window.confirm(`Create user ${fullName} as ${role}?`)) {
+      if (pin && pin !== confirmPin) {
+        throw new Error("PIN and confirmation do not match.");
+      }
+      if (!window.confirm(`Create user ${fullName} as ${ROLE_PERMISSIONS[role]?.label || role}?`)) {
         setPending(false);
         return;
       }
@@ -49,14 +97,16 @@ export function AddUserForm({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email,
           fullName,
           role,
-          mobile: mobile || undefined,
+          mobile,
           pin: pin || undefined,
+          confirmPin: confirmPin || undefined,
           companyScope,
+          department,
+          allowedModules: modules,
+          isActive,
           confirm: true,
-          developerOverrideKey: overrideKey || undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -70,16 +120,13 @@ export function AddUserForm({
         );
       } else {
         setMessage(
-          mobile
-            ? "User created."
-            : "User created (no mobile — PIN login not enabled)."
+          "User created. They can log in immediately with the mobile number and PIN."
         );
       }
-      setEmail("");
       setFullName("");
       setMobile("");
       setPin("");
-      setOverrideKey("");
+      setConfirmPin("");
       router.refresh();
       if (data.userId && !data.temporaryPin) {
         router.push(`/settings/users/${data.userId}/security`);
@@ -94,9 +141,16 @@ export function AddUserForm({
   return (
     <form
       onSubmit={onSubmit}
-      className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 space-y-3 max-w-lg"
+      className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 space-y-3 max-w-2xl"
     >
       <h3 className="font-semibold">Add user</h3>
+      <p className="text-xs text-[var(--muted)]">
+        Creates a real database login. Users sign in with Mobile Number + PIN
+        only — no email/password on the login screen.
+        {actorIsDeveloper
+          ? " Developer identity stays hidden from normal CEO lists."
+          : ""}
+      </p>
       <input
         required
         type="text"
@@ -107,24 +161,37 @@ export function AddUserForm({
       />
       <input
         required
-        type="email"
-        placeholder="Email (session identity)"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
+        type="tel"
+        inputMode="numeric"
+        placeholder="10-digit mobile number"
+        value={mobile}
+        onChange={(e) => setMobile(e.target.value)}
         className="w-full rounded-md border border-[var(--border)] px-3 py-2 text-sm"
       />
-      <select
-        value={role}
-        onChange={(e) => setRole(e.target.value)}
-        className="w-full rounded-md border border-[var(--border)] px-3 py-2 text-sm"
-      >
-        {ROLES.map((r) => (
-          <option key={r} value={r}>
-            {r}
-          </option>
-        ))}
-        {actorIsDeveloper && <option value="OWNER">OWNER</option>}
-      </select>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <select
+          value={role}
+          onChange={(e) => onRoleChange(e.target.value as AppRole)}
+          className="w-full rounded-md border border-[var(--border)] px-3 py-2 text-sm"
+        >
+          {roleOptions.map((r) => (
+            <option key={r} value={r}>
+              {ROLE_PERMISSIONS[r]?.label || r}
+            </option>
+          ))}
+        </select>
+        <select
+          value={department}
+          onChange={(e) => setDepartment(e.target.value)}
+          className="w-full rounded-md border border-[var(--border)] px-3 py-2 text-sm"
+        >
+          {DEPARTMENTS.map((d) => (
+            <option key={d} value={d}>
+              {d}
+            </option>
+          ))}
+        </select>
+      </div>
       <select
         value={companyScope}
         onChange={(e) => setCompanyScope(e.target.value)}
@@ -134,36 +201,55 @@ export function AddUserForm({
         <option value="RADHASWAMI">Radhaswami</option>
         <option value="ALL">All companies</option>
       </select>
-      <input
-        type="tel"
-        placeholder="Mobile (for PIN login)"
-        value={mobile}
-        onChange={(e) => setMobile(e.target.value)}
-        className="w-full rounded-md border border-[var(--border)] px-3 py-2 text-sm"
-      />
-      <input
-        type="password"
-        inputMode="numeric"
-        maxLength={8}
-        placeholder="Temporary PIN (blank = auto-generate)"
-        value={pin}
-        onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 8))}
-        className="w-full rounded-md border border-[var(--border)] px-3 py-2 text-sm"
-      />
-      <p className="text-xs text-[var(--muted)]">
-        With a mobile number, leave PIN blank to auto-generate a 6-digit
-        temporary PIN (shown once after create).
-      </p>
-      {actorIsDeveloper && overrideConfigured && (
+      <div className="grid gap-3 sm:grid-cols-2">
         <input
           type="password"
-          autoComplete="off"
-          placeholder="Developer Override (required to create Owner)"
-          value={overrideKey}
-          onChange={(e) => setOverrideKey(e.target.value)}
-          className="w-full rounded-md border border-amber-300 px-3 py-2 text-sm"
+          inputMode="numeric"
+          maxLength={8}
+          placeholder="PIN (4–8 digits)"
+          value={pin}
+          onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 8))}
+          className="w-full rounded-md border border-[var(--border)] px-3 py-2 text-sm tracking-[0.25em]"
         />
-      )}
+        <input
+          type="password"
+          inputMode="numeric"
+          maxLength={8}
+          placeholder="Confirm PIN"
+          value={confirmPin}
+          onChange={(e) =>
+            setConfirmPin(e.target.value.replace(/\D/g, "").slice(0, 8))
+          }
+          className="w-full rounded-md border border-[var(--border)] px-3 py-2 text-sm tracking-[0.25em]"
+        />
+      </div>
+      <p className="text-xs text-[var(--muted)]">
+        Leave PIN blank to auto-generate a temporary 6-digit PIN (shown once).
+      </p>
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={isActive}
+          onChange={(e) => setIsActive(e.target.checked)}
+          className="h-4 w-4 accent-[var(--accent)]"
+        />
+        Active
+      </label>
+      <fieldset className="rounded-md border border-[var(--border)] p-3">
+        <legend className="px-1 text-sm font-medium">Allowed modules</legend>
+        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {CRM_MODULES.map((mod) => (
+            <label key={mod} className="flex items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={modules.includes(mod)}
+                onChange={() => toggleModule(mod)}
+              />
+              {MODULE_LABELS[mod]}
+            </label>
+          ))}
+        </div>
+      </fieldset>
       {error && (
         <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">
           {error}
@@ -184,10 +270,10 @@ export function AddUserForm({
       )}
       <button
         type="submit"
-        disabled={pending}
+        disabled={pending || !fullName || !mobile}
         className="rounded-md bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
       >
-        {pending ? "Creating…" : "Create user"}
+        {pending ? "Saving…" : "SAVE USER"}
       </button>
     </form>
   );

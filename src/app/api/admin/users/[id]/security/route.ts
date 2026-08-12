@@ -13,7 +13,6 @@ import {
   isOverrideConfigured,
   loadDeveloperProfile,
   operationRequiresOverride,
-  OVERRIDE_IF_PRIVILEGED_TARGET,
   verifyDeveloperOverride,
   type DeveloperOperation,
 } from "@/lib/security/developer-override";
@@ -172,15 +171,36 @@ export async function POST(
     }
 
     const privilegedTarget = await targetIsPrivileged(id);
+    void privilegedTarget;
+    const adminClient = createServiceClient();
+    const { data: targetProfile } = await adminClient
+      .from("crm_profiles")
+      .select("is_primary_owner, is_developer, role")
+      .eq("id", id)
+      .maybeSingle();
+    const targetIsProtectedDeveloper = Boolean(
+      targetProfile?.is_primary_owner ||
+        (targetProfile?.is_developer && targetProfile.role === "OWNER")
+    );
+
+    // Developer Override is required only for destructive / protected-identity ops.
+    // CEO/Owner PIN reset for business users uses role hierarchy (ownerResetUserPin).
     const needsDevGate = Boolean(
-      (operation && operationRequiresOverride(operation)) ||
-        (operation &&
-          OVERRIDE_IF_PRIVILEGED_TARGET.has(operation) &&
-          privilegedTarget) ||
-        body.action === "force_pin_reset" ||
-        body.action === "force_generate_pin" ||
-        body.action === "delete_user" ||
-        body.action === "change_role"
+      body.action === "delete_user" ||
+        body.action === "change_role" ||
+        (targetIsProtectedDeveloper &&
+          [
+            "set_active",
+            "deactivate_user",
+            "force_pin_reset",
+            "force_generate_pin",
+            "reset_pin",
+            "generate_pin",
+            "revoke_all",
+            "reset_devices",
+            "unlock",
+          ].includes(body.action)) ||
+        (operation && operationRequiresOverride(operation))
     );
 
     let developerActor = await loadDeveloperProfile(manager.id);
@@ -233,14 +253,6 @@ export async function POST(
           body.autoGenerate === true ||
           body.action === "generate_pin" ||
           body.action === "force_generate_pin";
-        // Force pin reset for ADMIN/OWNER targets requires override (already gated when force_*)
-        if (
-          (body.action === "force_pin_reset" ||
-            body.action === "force_generate_pin") &&
-          !developerActor?.is_developer
-        ) {
-          return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-        }
         const result = await ownerResetUserPin({
           actor: developerActor || manager,
           userId: id,

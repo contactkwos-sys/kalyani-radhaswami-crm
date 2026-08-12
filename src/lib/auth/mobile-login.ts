@@ -14,6 +14,7 @@ import {
   stripPinMetadata,
   verifyPin,
 } from "@/lib/auth/pin";
+import { isVisibleInUserManagement } from "@/lib/auth/display";
 import type { AppRole, Profile } from "@/types/database";
 
 type LoginRow = {
@@ -159,12 +160,19 @@ export async function loginWithMobilePin(input: {
     remember: input.remember,
     role: profile.role,
     must_change_pin: Boolean(row.must_change_pin),
+    is_developer: Boolean(profile.is_developer),
   });
+
+  // Business users never self-change PIN; ignore must_change_pin for them.
+  const mustChangePin =
+    Boolean(row.must_change_pin) &&
+    Boolean(profile.is_developer) &&
+    profile.role === "OWNER";
 
   return {
     ok: true,
     role: profile.role as AppRole,
-    mustChangePin: Boolean(row.must_change_pin),
+    mustChangePin,
   };
 }
 
@@ -334,7 +342,16 @@ export async function changeOwnPin(input: {
   currentPin: string;
   newPin: string;
   confirmPin: string;
+  /** Only developer (or forced bootstrap) may self-change PIN. */
+  allowSelfChange: boolean;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!input.allowSelfChange) {
+    return {
+      ok: false,
+      error:
+        "Only CEO/Owner can change user PINs. Contact your Admin to reset your PIN.",
+    };
+  }
   if (!isValidPin(input.currentPin) || !isValidPin(input.newPin)) {
     return {
       ok: false,
@@ -426,7 +443,7 @@ export async function adminSetUserPin(input: {
         pin_updated_at: new Date().toISOString(),
         failed_attempts: 0,
         locked_until: null,
-        must_change_pin: true,
+        must_change_pin: false,
       })
       .eq("user_id", input.userId);
   } else {
@@ -434,7 +451,7 @@ export async function adminSetUserPin(input: {
       user_id: input.userId,
       mobile_number: mobile,
       pin_hash,
-      must_change_pin: true,
+      must_change_pin: false,
     });
   }
 
@@ -550,11 +567,14 @@ export async function revokeDevice(input: {
   });
 }
 
-export async function listUsersForAdmin(): Promise<
+export async function listUsersForAdmin(opts?: {
+  viewerIsDeveloper?: boolean;
+}): Promise<
   Array<
     Profile & {
       mobile_number: string | null;
       last_login_at: string | null;
+      pin_changed_at: string | null;
       has_pin: boolean;
       active_devices: number;
     }
@@ -567,7 +587,7 @@ export async function listUsersForAdmin(): Promise<
     .order("full_name");
   const { data: logins } = await admin
     .from("crm_user_login")
-    .select("user_id, mobile_number, last_login_at");
+    .select("user_id, mobile_number, last_login_at, pin_updated_at");
   const { data: devices } = await admin
     .from("crm_auth_devices")
     .select("user_id")
@@ -576,7 +596,11 @@ export async function listUsersForAdmin(): Promise<
   const loginMap = new Map(
     (logins || []).map((l) => [
       l.user_id,
-      { mobile_number: l.mobile_number, last_login_at: l.last_login_at },
+      {
+        mobile_number: l.mobile_number,
+        last_login_at: l.last_login_at,
+        pin_changed_at: l.pin_updated_at,
+      },
     ])
   );
   const deviceCount = new Map<string, number>();
@@ -584,16 +608,24 @@ export async function listUsersForAdmin(): Promise<
     deviceCount.set(d.user_id, (deviceCount.get(d.user_id) || 0) + 1);
   }
 
-  return (profiles || []).map((p) => {
-    const login = loginMap.get(p.id);
-    return {
-      ...(p as Profile),
-      mobile_number: login?.mobile_number || p.mobile,
-      last_login_at: login?.last_login_at || null,
-      has_pin: Boolean(login),
-      active_devices: deviceCount.get(p.id) || 0,
-    };
-  });
+  return (profiles || [])
+    .filter((p) =>
+      isVisibleInUserManagement(
+        p as Profile,
+        Boolean(opts?.viewerIsDeveloper)
+      )
+    )
+    .map((p) => {
+      const login = loginMap.get(p.id);
+      return {
+        ...(p as Profile),
+        mobile_number: login?.mobile_number || p.mobile,
+        last_login_at: login?.last_login_at || null,
+        pin_changed_at: login?.pin_changed_at || null,
+        has_pin: Boolean(login),
+        active_devices: deviceCount.get(p.id) || 0,
+      };
+    });
 }
 
 export async function listDevicesForUser(userId: string) {

@@ -2,20 +2,26 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireProfile } from "@/lib/auth/session";
 import { listUsersForAdmin } from "@/lib/auth/mobile-login";
+import { canManageUsersModule } from "@/lib/auth/modules";
+import { isDeveloperIdentity } from "@/lib/auth/display";
+import { canManageTargetRole, isExecutiveRole } from "@/lib/auth/roles";
 import { ROLE_PERMISSIONS, type AppRole, type CompanyScope } from "@/types/database";
 import {
   loadDeveloperProfile,
-  verifyDeveloperOverride,
 } from "@/lib/security/developer-override";
 import { createCrmUser, isManageableRole } from "@/lib/security/user-admin";
 
 export async function GET() {
   try {
     const profile = await requireProfile();
-    if (!ROLE_PERMISSIONS[profile.role].canManageUsers) {
+    if (
+      !ROLE_PERMISSIONS[profile.role].canManageUsers ||
+      !canManageUsersModule(profile)
+    ) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    const users = await listUsersForAdmin();
+    const viewerIsDeveloper = isDeveloperIdentity(profile);
+    const users = await listUsersForAdmin({ viewerIsDeveloper });
     return NextResponse.json({ users });
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -23,70 +29,85 @@ export async function GET() {
 }
 
 const createSchema = z.object({
-  email: z.string().email(),
+  email: z.string().email().optional().or(z.literal("")),
   fullName: z.string().min(1).max(120),
   role: z.string(),
-  mobile: z.string().optional(),
+  mobile: z.string().min(8),
   pin: z.string().optional(),
+  confirmPin: z.string().optional(),
   companyScope: z.enum(["KALYANI", "RADHASWAMI", "ALL"]).optional(),
-  developerOverrideKey: z.string().optional(),
+  department: z.string().max(80).optional(),
+  allowedModules: z.array(z.string()).optional(),
+  isActive: z.boolean().optional(),
   confirm: z.boolean().optional(),
 });
 
 export async function POST(request: Request) {
   try {
     const profile = await requireProfile();
-    if (!ROLE_PERMISSIONS[profile.role].canManageUsers) {
+    if (
+      !ROLE_PERMISSIONS[profile.role].canManageUsers ||
+      !canManageUsersModule(profile) ||
+      !isExecutiveRole(profile.role)
+    ) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const parsed = createSchema.safeParse(await request.json());
     if (!parsed.success) {
-      return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid request. Name, mobile, role, and PIN are required." },
+        { status: 400 }
+      );
     }
     const body = parsed.data;
     if (!isManageableRole(body.role)) {
       return NextResponse.json({ error: "Invalid role." }, { status: 400 });
     }
 
-    // Creating OWNER always requires Developer Override
-    const creatingOwner = body.role === "OWNER";
-    let actor = await loadDeveloperProfile(profile.id);
+    const actor =
+      (await loadDeveloperProfile(profile.id)) ||
+      ({
+        ...profile,
+        is_developer: Boolean(profile.is_developer),
+        is_primary_owner: Boolean(profile.is_primary_owner),
+      } as Awaited<ReturnType<typeof loadDeveloperProfile>>);
+
     if (!actor) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    if (creatingOwner || profile.role === "OWNER") {
-      const verified = await verifyDeveloperOverride({
-        operation: "ADD_USER",
-        overrideKey: creatingOwner
-          ? body.developerOverrideKey
-          : body.developerOverrideKey || undefined,
-        forceOverride: creatingOwner,
-      });
-      // Owner/Developer preferred for add-user; ADMIN may add non-owner without override
-      if (creatingOwner) {
-        if (!verified.ok) {
-          return NextResponse.json(
-            { error: verified.error, code: verified.code },
-            { status: 403 }
-          );
-        }
-        actor = verified.actor;
-      } else if (profile.role === "OWNER" && actor.is_developer) {
-        // Optional override confirmation for Owner/Developer creating users
-        if (body.developerOverrideKey) {
-          if (!verified.ok) {
-            return NextResponse.json(
-              { error: verified.error, code: verified.code },
-              { status: 403 }
-            );
-          }
-          actor = verified.actor;
-        }
-      } else if (!["OWNER","CEO_1","CEO_2","CEO_3","ADMIN"].includes(profile.role)) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
+    // Business CEO/Owner accounts are configurable; primary developer identity
+    // is never created through this path (is_developer always false).
+    const creatingOwner = body.role === "OWNER";
+    const actorIsDev = isDeveloperIdentity(profile);
+    const mayCreate =
+      actorIsDev ||
+      profile.role === "OWNER" ||
+      (isExecutiveRole(profile.role) &&
+        (creatingOwner
+          ? ["CEO_1", "CEO_2", "CEO_3"].includes(profile.role)
+          : canManageTargetRole(profile.role, body.role as AppRole) ||
+            ["CEO_1", "CEO_2", "CEO_3", "ADMIN", "SALES_MANAGER", "SALESMAN", "ACCOUNTANT", "VIEWER"].includes(
+              body.role
+            )));
+
+    if (!mayCreate) {
+      return NextResponse.json(
+        { error: "You are not authorised to create this role." },
+        { status: 403 }
+      );
+    }
+
+    if (
+      creatingOwner &&
+      !["OWNER", "CEO_1", "CEO_2", "CEO_3"].includes(profile.role) &&
+      !actorIsDev
+    ) {
+      return NextResponse.json(
+        { error: "Only CEO/Owner can create CEO/Owner accounts." },
+        { status: 403 }
+      );
     }
 
     if (!body.confirm) {
@@ -98,13 +119,17 @@ export async function POST(request: Request) {
 
     const result = await createCrmUser({
       actor,
-      email: body.email,
+      email: body.email || undefined,
       fullName: body.fullName,
       role: body.role as AppRole,
       mobile: body.mobile,
       pin: body.pin,
-      autoGeneratePin: true,
+      confirmPin: body.confirmPin,
+      autoGeneratePin: !body.pin,
       companyScope: body.companyScope as CompanyScope | undefined,
+      department: body.department,
+      allowedModules: body.allowedModules,
+      isActive: body.isActive,
     });
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: 400 });
@@ -112,6 +137,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       userId: result.userId,
+      mobile: result.mobile,
       // Plaintext temporary PIN returned once only — never logged/stored.
       temporaryPin: result.temporaryPin,
       pinAutoGenerated: result.pinAutoGenerated === true,

@@ -57,6 +57,10 @@ export interface Profile {
   is_active: boolean;
   preferred_company_id: string | null;
   company_scope: CompanyScope;
+  /** Business department (Sales, Accounts, Management, …). */
+  department?: string | null;
+  /** Optional explicit module allow-list; null = role defaults. */
+  allowed_modules?: string[] | null;
   /** Protected primary Owner — cannot be deleted/demoted via normal UI. */
   is_primary_owner?: boolean;
   /** Owner/Developer flag for elevated override operations. */
@@ -219,8 +223,13 @@ export const ROLE_PERMISSIONS: Record<
   },
 };
 
+/**
+ * Public CRM branding. Do NOT put the personal developer name here —
+ * it must never appear on login / dashboard / normal user-facing UI.
+ * Internal audit/server identity remains separate (is_developer).
+ */
 export const BRANDING = {
-  builder: "Built by Kumaresh Budhia",
+  builder: "Kalyani · Radhaswami Sales Force CRM",
   supportEmail: "contact.kwos@gmail.com",
   supportWhatsApp: "9825063208",
   supportWhatsAppDisplay: "98250-63-208",
