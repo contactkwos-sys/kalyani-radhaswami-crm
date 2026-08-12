@@ -1,119 +1,70 @@
-"use client";
-
 // ============================================================================
 // 09_setup_wizard.jsx
-// One-time hidden setup wizard: create auth + app_users rows without SQL /
-// UUID copy-paste. Calls /api/admin-create-user with header x-dev-key.
-//
-// Route: app/__kwos_setup/page.jsx
-// (double underscore — keep out of nav + robots.txt disallow)
+// A hidden, one-time setup page. Route suggestion: app/__kwos_setup/page.jsx
+// Protected by the SAME DEV_OVERRIDE_KEY already in Netlify env vars — no
+// second secret to manage. Opens once, fill the form, click one button,
+// all 5 users get created automatically. No UUIDs, no SQL, no copy-paste.
 // ============================================================================
-import { useMemo, useState } from "react";
-
-const ROLES = ["admin", "ceo", "accountant", "salesman"];
+"use client";
+import { useState } from "react";
 
 const DEFAULT_ROWS = [
-  { loginSlug: "admin", displayName: "Admin", role: "admin", tempPin: "1234", sortOrder: 10 },
-  { loginSlug: "ceo", displayName: "CEO (Kailash Kalyani)", role: "ceo", tempPin: "1234", sortOrder: 20 },
-  { loginSlug: "accountant", displayName: "Accountant", role: "accountant", tempPin: "1234", sortOrder: 30 },
-  { loginSlug: "salesman_01", displayName: "Salesman 01", role: "salesman", tempPin: "1234", sortOrder: 40 },
-  { loginSlug: "salesman_02", displayName: "Salesman 02", role: "salesman", tempPin: "1234", sortOrder: 50 },
+  { loginSlug: "admin",        displayName: "Admin",             role: "admin",      tempPin: "1234" },
+  { loginSlug: "ceo-kailash",  displayName: "Kailash Kalyani",    role: "ceo",        tempPin: "2345" },
+  { loginSlug: "accountant",   displayName: "Bharat Bhai",        role: "accountant", tempPin: "3456" },
+  { loginSlug: "salesman-1",   displayName: "Salesman 01",        role: "salesman",   tempPin: "4567" },
+  { loginSlug: "salesman-2",   displayName: "Salesman 02",        role: "salesman",   tempPin: "5678" },
 ];
 
-export default function SetupWizardPage() {
-  const [key, setKey] = useState("");
-  const [granted, setGranted] = useState(false);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+export default function SetupWizard() {
+  const [devKey, setDevKey] = useState("");
+  const [unlocked, setUnlocked] = useState(false);
   const [rows, setRows] = useState(DEFAULT_ROWS);
-  const [results, setResults] = useState([]);
+  const [results, setResults] = useState({}); // loginSlug -> 'ok' | 'error' | 'pending'
+  const [running, setRunning] = useState(false);
+  const [done, setDone] = useState(false);
 
-  const canCreate = useMemo(
-    () => rows.every((r) => r.loginSlug && r.displayName && r.role && /^\d{4}$/.test(r.tempPin)),
-    [rows]
-  );
-
-  const verify = async () => {
-    setBusy(true);
-    setError("");
-    try {
-      const res = await fetch("/api/dev-verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error("Invalid developer key.");
-      setGranted(true);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Invalid developer key.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const updateRow = (idx, patch) => {
-    setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+  const updateRow = (i, field, value) => {
+    setRows((r) => r.map((row, idx) => (idx === i ? { ...row, [field]: value } : row)));
   };
 
   const createAll = async () => {
-    setBusy(true);
-    setError("");
-    const out = [];
-    try {
-      for (const r of rows) {
+    setRunning(true);
+    const nextResults = {};
+    for (const row of rows) {
+      nextResults[row.loginSlug] = "pending";
+      setResults({ ...nextResults });
+      try {
         const res = await fetch("/api/admin-create-user", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-dev-key": key,
-          },
-          body: JSON.stringify({
-            loginSlug: r.loginSlug.trim().toLowerCase(),
-            displayName: r.displayName.trim(),
-            role: r.role,
-            tempPin: r.tempPin,
-            sortOrder: r.sortOrder,
-          }),
+          headers: { "Content-Type": "application/json", "x-dev-key": devKey },
+          body: JSON.stringify(row),
         });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          out.push({ slug: r.loginSlug, ok: false, error: data.error || res.statusText });
-        } else {
-          out.push({ slug: r.loginSlug, ok: true, id: data.id });
-        }
+        const data = await res.json();
+        nextResults[row.loginSlug] = res.ok ? "ok" : `error: ${data.error || "unknown"}`;
+      } catch (e) {
+        nextResults[row.loginSlug] = `error: ${e.message}`;
       }
-      setResults(out);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Create failed.");
-    } finally {
-      setBusy(false);
+      setResults({ ...nextResults });
     }
+    setRunning(false);
+    setDone(true);
   };
 
-  if (!granted) {
+  if (!unlocked) {
     return (
       <div style={{ minHeight: "100vh", background: "#111", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-        <div style={{ width: "100%", maxWidth: 360, textAlign: "center" }}>
-          <p style={{ color: "#8a8296", fontSize: 11, letterSpacing: 1 }}>KWOS ONE-TIME SETUP</p>
-          <p style={{ color: "#cfc8d8", fontSize: 13, marginTop: 8 }}>
-            Create login tiles without SQL or UUID paste.
-          </p>
+        <div style={{ width: "100%", maxWidth: 320, textAlign: "center" }}>
+          <p style={{ color: "#8a8296", fontSize: 11, letterSpacing: 1 }}>ONE-TIME SETUP</p>
+          <p style={{ color: "#eee", fontSize: 13, margin: "10px 0" }}>Enter the same DEV_OVERRIDE_KEY you set in Netlify.</p>
           <input
-            type="password"
-            placeholder="Developer override key"
-            value={key}
-            onChange={(e) => setKey(e.target.value)}
-            style={{ width: "100%", padding: 12, borderRadius: 10, marginTop: 16, marginBottom: 10, textAlign: "center" }}
+            type="password" placeholder="Developer key" value={devKey}
+            onChange={(e) => setDevKey(e.target.value)}
+            style={{ width: "100%", padding: 12, borderRadius: 10, marginBottom: 10, textAlign: "center" }}
           />
-          {error && <p style={{ color: "#e38a8a", fontSize: 12, marginBottom: 8 }}>{error}</p>}
-          <button
-            type="button"
-            onClick={verify}
-            disabled={busy || !key}
-            style={{ width: "100%", padding: 12, borderRadius: 10, background: "#c6972e", fontWeight: 700 }}
-          >
-            {busy ? "Checking…" : "Unlock"}
+          <button onClick={() => setUnlocked(true)} disabled={!devKey}
+            style={{ width: "100%", padding: 12, borderRadius: 10, background: "#c6972e", fontWeight: 700 }}>
+            Continue
           </button>
         </div>
       </div>
@@ -121,104 +72,49 @@ export default function SetupWizardPage() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#111", color: "#eee", padding: 20 }}>
-      <p style={{ fontSize: 12, color: "#8a8296", marginBottom: 6 }}>KWOS SETUP WIZARD</p>
-      <h1 style={{ fontSize: 20, margin: "0 0 8px" }}>Create login users</h1>
-      <p style={{ fontSize: 13, color: "#cfc8d8", marginBottom: 16, maxWidth: 640 }}>
-        Each row creates the Supabase Auth user and matching <code>app_users</code> row in one call.
-        Give each person their temporary 4-digit PIN; they set their own PIN on first login.
-      </p>
+    <div style={{ minHeight: "100vh", background: "#faf7ee", padding: 20 }}>
+      <div style={{ maxWidth: 640, margin: "0 auto" }}>
+        <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Create your 5 users</h1>
+        <p style={{ fontSize: 13, color: "#666", marginBottom: 20 }}>
+          Edit names/PINs if you like, or leave the defaults. Click Create — everything (login account + role) gets set up in one go.
+        </p>
 
-      <div style={{ display: "grid", gap: 12, maxWidth: 820 }}>
-        {rows.map((r, idx) => (
-          <div
-            key={idx}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1.1fr 1.4fr 1fr 0.7fr",
-              gap: 8,
-              padding: 12,
-              border: "1px solid #333",
-              borderRadius: 12,
-              background: "#1a1a1a",
-            }}
-          >
-            <input
-              value={r.loginSlug}
-              onChange={(e) => updateRow(idx, { loginSlug: e.target.value })}
-              placeholder="login_slug"
-              style={{ padding: 8, borderRadius: 8, border: "1px solid #444", background: "#111", color: "#eee" }}
-            />
-            <input
-              value={r.displayName}
-              onChange={(e) => updateRow(idx, { displayName: e.target.value })}
-              placeholder="Display name"
-              style={{ padding: 8, borderRadius: 8, border: "1px solid #444", background: "#111", color: "#eee" }}
-            />
-            <select
-              value={r.role}
-              onChange={(e) => updateRow(idx, { role: e.target.value })}
-              style={{ padding: 8, borderRadius: 8, border: "1px solid #444", background: "#111", color: "#eee" }}
-            >
-              {ROLES.map((role) => (
-                <option key={role} value={role}>{role}</option>
-              ))}
+        {rows.map((row, i) => (
+          <div key={row.loginSlug} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 90px", gap: 8, marginBottom: 8, alignItems: "center" }}>
+            <input value={row.displayName} onChange={(e) => updateRow(i, "displayName", e.target.value)}
+              placeholder="Display name" style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }} />
+            <select value={row.role} onChange={(e) => updateRow(i, "role", e.target.value)}
+              style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}>
+              {["admin", "ceo", "accountant", "salesman"].map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
-            <input
-              value={r.tempPin}
-              onChange={(e) => updateRow(idx, { tempPin: e.target.value.replace(/\D/g, "").slice(0, 4) })}
-              placeholder="PIN"
-              inputMode="numeric"
-              style={{ padding: 8, borderRadius: 8, border: "1px solid #444", background: "#111", color: "#eee", textAlign: "center", letterSpacing: 2 }}
-            />
+            <input value={row.tempPin} maxLength={4} onChange={(e) => /^\d{0,4}$/.test(e.target.value) && updateRow(i, "tempPin", e.target.value)}
+              placeholder="Temp PIN" style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }} />
+            <span style={{ fontSize: 12, textAlign: "center", fontWeight: 700, color: results[row.loginSlug] === "ok" ? "#3e7c63" : results[row.loginSlug]?.startsWith("error") ? "#b5502e" : "#999" }}>
+              {results[row.loginSlug] === "ok" ? "✓ Done" : results[row.loginSlug] === "pending" ? "…" : results[row.loginSlug]?.startsWith("error") ? "Failed" : ""}
+            </span>
           </div>
         ))}
-      </div>
 
-      {error && <p style={{ color: "#e38a8a", fontSize: 13, marginTop: 12 }}>{error}</p>}
+        <button onClick={createAll} disabled={running}
+          style={{ width: "100%", padding: 14, borderRadius: 12, background: "#c6972e", fontWeight: 700, marginTop: 12 }}>
+          {running ? "Creating…" : "Create All Users"}
+        </button>
 
-      <button
-        type="button"
-        onClick={createAll}
-        disabled={busy || !canCreate}
-        style={{
-          marginTop: 16,
-          padding: "12px 18px",
-          borderRadius: 10,
-          background: canCreate ? "#c6972e" : "#555",
-          color: "#111",
-          fontWeight: 700,
-          border: "none",
-        }}
-      >
-        {busy ? "Creating…" : "Create all users"}
-      </button>
-
-      {results.length > 0 && (
-        <div style={{ marginTop: 20, maxWidth: 640 }}>
-          <p style={{ fontSize: 12, color: "#8a8296", marginBottom: 8 }}>Results</p>
-          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-            {results.map((r) => (
-              <li
-                key={r.slug}
-                style={{
-                  padding: "8px 10px",
-                  marginBottom: 6,
-                  borderRadius: 8,
-                  background: r.ok ? "#14352c" : "#3a1c1c",
-                  color: r.ok ? "#9fd6c2" : "#e38a8a",
-                  fontSize: 13,
-                }}
-              >
-                {r.ok ? `✓ ${r.slug}` : `✗ ${r.slug}: ${r.error}`}
-              </li>
+        {done && (
+          <div style={{ marginTop: 24, padding: 16, background: "#fff", borderRadius: 12, border: "1px solid #e4dac4" }}>
+            <p style={{ fontWeight: 700, marginBottom: 8 }}>Save these temporary PINs — share one with each person:</p>
+            {rows.map((r) => (
+              <p key={r.loginSlug} style={{ fontSize: 13, margin: "4px 0" }}>
+                <b>{r.displayName}</b> ({r.role}) — temp PIN: <code>{r.tempPin}</code>
+              </p>
             ))}
-          </ul>
-          <p style={{ fontSize: 12, color: "#8a8296", marginTop: 12 }}>
-            After success, open <a href="/login" style={{ color: "#c6972e" }}>/login</a> and sign in with each temp PIN.
-          </p>
-        </div>
-      )}
+            <p style={{ fontSize: 12, color: "#999", marginTop: 10 }}>
+              Everyone will be asked to set their own permanent PIN the first time they log in.
+              You can delete this page's route once done, or leave it — it's hidden and key-protected.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
