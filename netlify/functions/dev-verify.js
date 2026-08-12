@@ -17,7 +17,13 @@ exports.handler = async (event) => {
     const { key } = JSON.parse(event.body || "{}");
     const expected =
       process.env.DEV_OVERRIDE_KEY || process.env.DEVELOPER_OVERRIDE_KEY;
-    const ok = !!expected && typeof key === "string" && key === expected;
+    if (!expected) {
+      return json(503, {
+        ok: false,
+        error: "DEV_OVERRIDE_KEY not configured on server",
+      });
+    }
+    const ok = typeof key === "string" && key === expected;
     return json(ok ? 200 : 401, { ok });
   } catch {
     return json(500, { ok: false });

@@ -38,6 +38,7 @@ export default function SetupWizard() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key: devKey }),
+        signal: AbortSignal.timeout(15000),
       });
       const rawBody = await res.text();
       // Temporary debug — remove after confirming unlock works end-to-end
@@ -48,7 +49,13 @@ export default function SetupWizard() {
       } catch {
         throw new Error(`Invalid response (${res.status}): ${rawBody.slice(0, 120)}`);
       }
-      if (!res.ok || !data.ok) throw new Error("Invalid developer key.");
+      if (!res.ok || !data.ok) {
+        throw new Error(
+          data.error || (res.status === 503
+            ? "DEV_OVERRIDE_KEY not configured on server."
+            : "Invalid developer key.")
+        );
+      }
       setUnlocked(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Invalid developer key.");
