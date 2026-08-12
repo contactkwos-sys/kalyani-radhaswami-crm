@@ -50,14 +50,14 @@ Set these in **Netlify → Site settings → Environment variables**, then **Cle
 
 | Variable | Value |
 |---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | `https://ixulyhomqtajenigopai.supabase.co` |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` or `SUPABASE_PUBLISHABLE_KEY` | publishable/anon key for **that** project |
-| `SUPABASE_SERVICE_ROLE_KEY` | service_role key for **that** project |
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://pelwnhukierrqienpveb.supabase.co` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` or `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | `sb_publishable_...` for **this** project |
+| `SUPABASE_SECRET_KEY` or `SUPABASE_SERVICE_ROLE_KEY` | `sb_secret_...` / service_role for **this** project |
 | `DEV_OVERRIDE_KEY` | same secret you type in `/__kwos_setup` |
 
-Wrong project URL (e.g. a different `*.supabase.co`) makes login look broken while CRM data still exists elsewhere.
+This CRM uses a **dedicated** Supabase project (`pelwnhukierrqienpveb`) — separate from the shared KWOS / Family Tree project. Do not point Netlify at any other `*.supabase.co` URL.
 
-CRM tables are namespaced `crm_*` so they coexist with other apps on the shared Supabase project.
+CRM tables are namespaced `crm_*`.
 
 ### Developer Override
 

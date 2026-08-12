@@ -6,7 +6,7 @@
 # If Netlify UI has different NEXT_PUBLIC_* values, update/remove those UI vars
 # so this project is used, then Clear cache and deploy.
 [build.environment]
-  NEXT_PUBLIC_SUPABASE_URL = "https://ixulyhomqtajenigopai.supabase.co"
+  NEXT_PUBLIC_SUPABASE_URL = "https://pelwnhukierrqienpveb.supabase.co"
 
 [functions]
   directory = "netlify/functions"

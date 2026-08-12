@@ -2,7 +2,8 @@ export function getSupabaseUrl(): string {
   const url =
     process.env.NEXT_PUBLIC_SUPABASE_URL ||
     process.env.SUPABASE_URL ||
-    "https://ixulyhomqtajenigopai.supabase.co";
+    process.env.KALYANI_SUPABASE_URL ||
+    "https://pelwnhukierrqienpveb.supabase.co";
   return url.replace(/\/$/, "");
 }
 
@@ -10,7 +11,8 @@ export function getSupabaseAnonKey(): string {
   const key =
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-    process.env.SUPABASE_PUBLISHABLE_KEY;
+    process.env.SUPABASE_PUBLISHABLE_KEY ||
+    process.env.KALYANI_SUPABASE_PUBLISHABLE_KEY;
 
   if (!key) {
     throw new Error(
@@ -22,7 +24,10 @@ export function getSupabaseAnonKey(): string {
 
 export function getSupabaseServiceRoleKey(): string {
   const key =
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SECRET_KEY ||
+    process.env.KALYANI_SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.KALYANI_SUPABASE_SECRET_KEY;
   if (!key) {
     throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
   }
