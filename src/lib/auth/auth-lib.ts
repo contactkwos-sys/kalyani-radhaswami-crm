@@ -32,8 +32,29 @@ export async function listActiveUsers(): Promise<ActiveUserTile[]> {
 }
 
 /**
- * First-time PIN setup. `currentTempPin` is whatever temporary PIN the
- * admin gave the person when the account was created.
+ * First-time login: enter the temporary PIN from admin once.
+ * That same PIN becomes the permanent login PIN (no re-entry / confirm).
+ */
+export async function completeFirstLogin(loginSlug: string, pin: string) {
+  if (!/^\d{4}$/.test(pin || "")) {
+    throw new Error("Enter the 4-digit PIN from admin.");
+  }
+
+  const { error: verifyErr } = await supabase.auth.signInWithPassword({
+    email: slugEmail(loginSlug),
+    password: deriveAuthPassword(loginSlug, pin),
+  });
+  if (verifyErr) {
+    throw new Error("PIN is incorrect.");
+  }
+
+  const { error: rpcErr } = await supabase.rpc("mark_pin_set");
+  if (rpcErr) throw new Error(rpcErr.message || "Could not finish PIN setup.");
+}
+
+/**
+ * @deprecated Prefer completeFirstLogin — first-time setup no longer asks for
+ * temporary / new / confirm three times.
  */
 export async function setInitialPin(
   loginSlug: string,
