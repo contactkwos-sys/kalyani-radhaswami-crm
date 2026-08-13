@@ -7,7 +7,8 @@ export { ROLE_HOME };
 export type { LoginRole };
 
 /** Map CRM AppRole → login role home (server-side). Always the real dashboard. */
-export function homeForRole(_role: AppRole | string): RoleHome {
+export function homeForRole(role: AppRole | string): RoleHome {
+  void role;
   return "/dashboard";
 }
 

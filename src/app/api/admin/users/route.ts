@@ -86,9 +86,9 @@ export async function POST(request: Request) {
       profile.role === "OWNER" ||
       (isExecutiveRole(profile.role) &&
         (creatingOwner
-          ? ["CEO_1", "CEO_2", "CEO_3"].includes(profile.role)
+          ? ["CEO_1", "CEO_2", "CEO_3", "CEO_4"].includes(profile.role)
           : canManageTargetRole(profile.role, body.role as AppRole) ||
-            ["CEO_1", "CEO_2", "CEO_3", "ADMIN", "SALES_MANAGER", "SALESMAN", "ACCOUNTANT", "VIEWER"].includes(
+            ["CEO_1", "CEO_2", "CEO_3", "CEO_4", "ADMIN", "SALES_MANAGER", "SALESMAN", "ACCOUNTANT", "VIEWER"].includes(
               body.role
             )));
 
@@ -101,7 +101,7 @@ export async function POST(request: Request) {
 
     if (
       creatingOwner &&
-      !["OWNER", "CEO_1", "CEO_2", "CEO_3"].includes(profile.role) &&
+      !["OWNER", "CEO_1", "CEO_2", "CEO_3", "CEO_4"].includes(profile.role) &&
       !actorIsDev
     ) {
       return NextResponse.json(

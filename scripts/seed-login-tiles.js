@@ -22,21 +22,29 @@ const SERVICE =
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
   process.env.SUPABASE_SECRET_KEY;
 
+const SUBTITLES = {
+  admin: "System administrator",
+  ceo: "Chief Executive / Management",
+  accountant: "Accounts & entries",
+  salesman: "Field sales",
+};
+
 const TILES = [
   {
     loginSlug: "admin",
     displayName: "Admin",
     role: "admin",
     crmRole: "ADMIN",
-    tempPin: "1234",
+    // Temporary PIN must come from env — never commit production PINs.
+    tempPin: process.env.SEED_ADMIN_PIN || "",
     sortOrder: 10,
   },
   {
     loginSlug: "ceo",
-    displayName: "CEO (Kailash Kalyani)",
+    displayName: "CEO",
     role: "ceo",
     crmRole: "CEO_1",
-    tempPin: "1234",
+    tempPin: process.env.SEED_CEO_PIN || "",
     sortOrder: 20,
   },
   {
@@ -44,7 +52,7 @@ const TILES = [
     displayName: "Accountant",
     role: "accountant",
     crmRole: "ACCOUNTANT",
-    tempPin: "1234",
+    tempPin: process.env.SEED_ACCOUNTANT_PIN || "",
     sortOrder: 30,
   },
   {
@@ -52,7 +60,7 @@ const TILES = [
     displayName: "Salesman 01",
     role: "salesman",
     crmRole: "SALESMAN",
-    tempPin: "1234",
+    tempPin: process.env.SEED_SALESMAN_01_PIN || "",
     sortOrder: 40,
   },
   {
@@ -60,7 +68,7 @@ const TILES = [
     displayName: "Salesman 02",
     role: "salesman",
     crmRole: "SALESMAN",
-    tempPin: "1234",
+    tempPin: process.env.SEED_SALESMAN_02_PIN || "",
     sortOrder: 50,
   },
 ];
@@ -73,6 +81,15 @@ async function main() {
   if (!SERVICE) {
     console.error("SUPABASE_SERVICE_ROLE_KEY required");
     process.exit(1);
+  }
+
+  for (const tile of TILES) {
+    if (!/^\d{4,8}$/.test(tile.tempPin || "")) {
+      console.error(
+        `Missing/invalid PIN for ${tile.loginSlug}. Set SEED_*_PIN env vars (4–8 digits).`
+      );
+      process.exit(1);
+    }
   }
 
   const admin = createClient(URL.replace(/\/$/, ""), SERVICE, {
@@ -95,11 +112,26 @@ async function main() {
 
     const { data: existing } = await admin
       .from("app_users")
-      .select("id, login_slug")
+      .select("id, login_slug, display_name")
       .eq("login_slug", tile.loginSlug)
       .maybeSingle();
 
     if (existing) {
+      // Repair hard-coded personal CEO labels on existing tiles.
+      if (
+        tile.role === "ceo" &&
+        (String(existing.display_name || "").toLowerCase().includes("kailash") ||
+          String(existing.display_name || "").startsWith("CEO ("))
+      ) {
+        await admin
+          .from("app_users")
+          .update({
+            display_name: "CEO",
+            role_subtitle: SUBTITLES.ceo,
+          })
+          .eq("id", existing.id);
+        console.log("Updated CEO display_name → CEO:", existing.id);
+      }
       console.log("Skip (exists):", tile.loginSlug, existing.id);
       seeded.push({ ...tile, id: existing.id, skipped: true });
       continue;
@@ -125,6 +157,7 @@ async function main() {
       login_slug: tile.loginSlug,
       display_name: tile.displayName,
       role: tile.role,
+      role_subtitle: SUBTITLES[tile.role] || null,
       pin_is_set: false,
       is_active: true,
       sort_order: tile.sortOrder,
@@ -183,7 +216,9 @@ async function main() {
   if (rpcErr) throw rpcErr;
 
   console.log("\nlist_login_users =>", JSON.stringify(tiles, null, 2));
-  console.log("\nTemporary PIN for first login (change on first use): 1234");
+  console.log(
+    "\nTemporary PINs were taken from SEED_*_PIN env vars (not printed)."
+  );
   console.log("Tiles:", seeded.map((s) => s.loginSlug).join(", "));
 }
 

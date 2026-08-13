@@ -38,6 +38,7 @@ const ROLES = [
   "CEO_1",
   "CEO_2",
   "CEO_3",
+  "CEO_4",
   "ADMIN",
   "SALES_MANAGER",
   "SALESMAN",
@@ -67,6 +68,8 @@ export function UserSecurityPanel({
   const [pending, setPending] = useState(false);
   const [overrideKey, setOverrideKey] = useState("");
   const [confirmText, setConfirmText] = useState("");
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [invitePin, setInvitePin] = useState<string | null>(null);
 
   async function run(
     action: string,
@@ -124,9 +127,38 @@ export function UserSecurityPanel({
   const locked =
     Boolean(user.locked_until) &&
     new Date(user.locked_until as string).getTime() > now;
-  const privileged = ["OWNER", "CEO_1", "CEO_2", "CEO_3", "ADMIN"].includes(
-    user.role
-  );
+  const privileged = [
+    "OWNER",
+    "CEO_1",
+    "CEO_2",
+    "CEO_3",
+    "CEO_4",
+    "ADMIN",
+  ].includes(user.role);
+
+  async function generateInvite() {
+    setPending(true);
+    setError(null);
+    setMessage(null);
+    setInviteUrl(null);
+    setInvitePin(null);
+    try {
+      const res = await fetch("/api/admin/invites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not create invite");
+      setInviteUrl(String(data.inviteUrl));
+      setInvitePin(data.temporaryPin ? String(data.temporaryPin) : null);
+      setMessage("Invite created. Share the link and temporary PIN separately.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create invite");
+    } finally {
+      setPending(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -192,6 +224,30 @@ export function UserSecurityPanel({
           />
         </section>
       )}
+
+      <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 space-y-3">
+        <h3 className="font-semibold">Invite link</h3>
+        <p className="text-sm text-[var(--muted)]">
+          Generate a single-use, time-limited access link. The URL never contains
+          the PIN — share the temporary PIN separately.
+        </p>
+        <button
+          type="button"
+          disabled={pending || !user.is_active}
+          onClick={() => void generateInvite()}
+          className="rounded-md bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+        >
+          Generate invite
+        </button>
+        {inviteUrl && (
+          <div className="rounded-md border border-[var(--border)] bg-[var(--bg)] px-3 py-3 text-sm">
+            <p className="break-all font-mono text-xs">{inviteUrl}</p>
+            {invitePin && (
+              <p className="mt-2 font-mono text-lg tracking-[0.3em]">{invitePin}</p>
+            )}
+          </div>
+        )}
+      </section>
 
       <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 space-y-3">
         <h3 className="font-semibold">Mobile number</h3>

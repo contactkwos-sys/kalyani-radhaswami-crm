@@ -85,6 +85,7 @@ export const DEFAULT_MODULES_BY_ROLE: Record<AppRole, CrmModule[]> = {
   CEO_1: [...EXEC_MODULES],
   CEO_2: [...EXEC_MODULES],
   CEO_3: [...EXEC_MODULES],
+  CEO_4: [...EXEC_MODULES],
   ADMIN: [...EXEC_MODULES],
   SALES_MANAGER: [
     "dashboard",

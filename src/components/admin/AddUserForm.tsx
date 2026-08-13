@@ -11,15 +11,16 @@ import {
 } from "@/lib/auth/modules";
 
 const ROLES: AppRole[] = [
-  "OWNER",
+  "ADMIN",
   "CEO_1",
   "CEO_2",
   "CEO_3",
-  "ADMIN",
-  "SALES_MANAGER",
-  "SALESMAN",
+  "CEO_4",
   "ACCOUNTANT",
+  "SALESMAN",
+  "SALES_MANAGER",
   "VIEWER",
+  "OWNER",
 ];
 
 const DEPARTMENTS = [
@@ -52,6 +53,8 @@ export function AddUserForm({
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [generatedPin, setGeneratedPin] = useState<string | null>(null);
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [createdUserId, setCreatedUserId] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   const roleOptions = useMemo(
@@ -85,6 +88,8 @@ export function AddUserForm({
     setError(null);
     setMessage(null);
     setGeneratedPin(null);
+    setInviteUrl(null);
+    setCreatedUserId(null);
     try {
       if (pin && pin !== confirmPin) {
         throw new Error("PIN and confirmation do not match.");
@@ -111,6 +116,7 @@ export function AddUserForm({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Failed to create user");
+      setCreatedUserId(data.userId || null);
       if (data.temporaryPin) {
         setGeneratedPin(String(data.temporaryPin));
         setMessage(
@@ -120,17 +126,29 @@ export function AddUserForm({
         );
       } else {
         setMessage(
-          "User created. They can log in immediately with the mobile number and PIN."
+          "User created. They appear on the login screen and can sign in with PIN (or mobile + PIN)."
         );
+      }
+      // Auto-generate invite only when a temporary PIN was issued (avoid overwriting a chosen PIN).
+      if (data.userId && data.temporaryPin) {
+        const inv = await fetch("/api/admin/invites", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: data.userId,
+            temporaryPin: data.temporaryPin,
+          }),
+        });
+        const invData = await inv.json().catch(() => ({}));
+        if (inv.ok && invData.inviteUrl) {
+          setInviteUrl(String(invData.inviteUrl));
+        }
       }
       setFullName("");
       setMobile("");
       setPin("");
       setConfirmPin("");
       router.refresh();
-      if (data.userId && !data.temporaryPin) {
-        router.push(`/settings/users/${data.userId}/security`);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed");
     } finally {
@@ -145,10 +163,11 @@ export function AddUserForm({
     >
       <h3 className="font-semibold">Add user</h3>
       <p className="text-xs text-[var(--muted)]">
-        Creates a real database login. After seeding app_users, they sign in with role tile + PIN
-        only — no email/password on the login screen.
+        Creates a real database account (mobile + hashed PIN), a login tile, and an optional
+        single-use invite link. CEO personal names stay in the profile — the login card shows
+        only the role label.
         {actorIsDeveloper
-          ? " Developer identity stays hidden from normal CEO lists."
+          ? " Developer Override identity stays hidden from normal lists."
           : ""}
       </p>
       <input
@@ -262,10 +281,27 @@ export function AddUserForm({
       )}
       {generatedPin && (
         <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-950">
-          <p className="font-semibold">Temporary PIN (copy now)</p>
+          <p className="font-semibold">Temporary PIN (copy now — never stored in plaintext)</p>
           <p className="mt-1 font-mono text-2xl tracking-[0.35em]">
             {generatedPin}
           </p>
+        </div>
+      )}
+      {inviteUrl && (
+        <div className="rounded-md border border-[var(--border)] bg-[var(--bg)] px-3 py-3 text-sm">
+          <p className="font-semibold">Invite link (single-use, time-limited)</p>
+          <p className="mt-1 break-all font-mono text-xs">{inviteUrl}</p>
+          <p className="mt-2 text-xs text-[var(--muted)]">
+            Share the link and temporary PIN separately. The URL never contains the PIN.
+          </p>
+          {createdUserId && (
+            <a
+              href={`/settings/users/${createdUserId}/security`}
+              className="mt-2 inline-block text-sm font-semibold text-[var(--accent)]"
+            >
+              Open security / regenerate invite →
+            </a>
+          )}
         </div>
       )}
       <button
