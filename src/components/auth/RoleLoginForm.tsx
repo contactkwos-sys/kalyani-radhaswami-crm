@@ -7,7 +7,7 @@ import {
   getMyRole,
   listActiveUsers,
   loginWithPin,
-  setInitialPin,
+  completeFirstLogin,
   type ActiveUserTile,
 } from "@/lib/auth/auth-lib";
 
@@ -18,10 +18,7 @@ export function RoleLoginForm() {
   const [tiles, setTiles] = useState<ActiveUserTile[]>([]);
   const [slug, setSlug] = useState<string | null>(null);
   const [pin, setPin] = useState("");
-  const [confirmPin, setConfirmPin] = useState("");
-  const [tempPin, setTempPin] = useState("");
   const [mode, setMode] = useState<"login" | "set">("login");
-  const [setStep, setSetStep] = useState<"temp" | "new" | "confirm">("temp");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingTiles, setLoadingTiles] = useState(true);
@@ -38,35 +35,15 @@ export function RoleLoginForm() {
     [tiles, slug]
   );
 
-  function activeBuffer() {
-    if (mode === "set") {
-      if (setStep === "temp") return tempPin;
-      if (setStep === "new") return pin;
-      return confirmPin;
-    }
-    return pin;
-  }
-
-  function setActiveBuffer(next: string) {
-    if (mode === "set") {
-      if (setStep === "temp") setTempPin(next);
-      else if (setStep === "new") setPin(next);
-      else setConfirmPin(next);
-      return;
-    }
-    setPin(next);
-  }
-
   function pushDigit(d: string) {
     setError(null);
-    const cur = activeBuffer();
-    if (cur.length >= 4) return;
-    setActiveBuffer(cur + d);
+    if (pin.length >= 4) return;
+    setPin(pin + d);
   }
 
   function backspace() {
     setError(null);
-    setActiveBuffer(activeBuffer().slice(0, -1));
+    setPin(pin.slice(0, -1));
   }
 
   async function goHome() {
@@ -80,44 +57,26 @@ export function RoleLoginForm() {
       setError("Select a role tile first.");
       return;
     }
+    if (pin.length !== 4) {
+      setError(
+        mode === "set"
+          ? "Enter the 4-digit PIN from admin."
+          : "Enter your 4-digit PIN."
+      );
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
       if (mode === "set") {
-        if (setStep === "temp") {
-          if (tempPin.length !== 4) {
-            setError("Enter the temporary 4-digit PIN.");
-            setLoading(false);
-            return;
-          }
-          setSetStep("new");
-          setLoading(false);
-          return;
-        }
-        if (setStep === "new") {
-          if (pin.length !== 4) {
-            setError("New PIN must be exactly 4 digits.");
-            setLoading(false);
-            return;
-          }
-          setSetStep("confirm");
-          setLoading(false);
-          return;
-        }
-        await setInitialPin(slug, tempPin, pin, confirmPin);
-        await goHome();
-        return;
+        await completeFirstLogin(slug, pin);
+      } else {
+        await loginWithPin(slug, pin);
       }
-
-      if (pin.length !== 4) {
-        setError("Enter your 4-digit PIN.");
-        setLoading(false);
-        return;
-      }
-      await loginWithPin(slug, pin);
       await goHome();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to sign in.");
+      setPin("");
       setLoading(false);
     }
   }
@@ -131,22 +90,12 @@ export function RoleLoginForm() {
   function selectTile(t: ActiveUserTile) {
     setSlug(t.login_slug);
     setPin("");
-    setConfirmPin("");
-    setTempPin("");
     setError(null);
     setMode(t.pin_is_set ? "login" : "set");
-    setSetStep("temp");
   }
 
-  const buffer = activeBuffer();
   const prompt =
-    mode === "set"
-      ? setStep === "temp"
-        ? "Enter temporary PIN"
-        : setStep === "new"
-          ? "Set your new 4-digit PIN"
-          : "Confirm new PIN"
-      : "Enter PIN";
+    mode === "set" ? "Enter the PIN from admin once" : "Enter PIN";
 
   return (
     <div className="flex w-full flex-col gap-5">
@@ -179,7 +128,7 @@ export function RoleLoginForm() {
                   </span>
                   {!t.pin_is_set ? (
                     <span className="mt-1 block text-xs text-amber-700">
-                      First-time: set PIN
+                      First-time: enter PIN once
                     </span>
                   ) : (
                     <span className="mt-1 block text-xs text-[var(--muted)]">
@@ -202,7 +151,7 @@ export function RoleLoginForm() {
                 <span
                   key={i}
                   className={`h-3 w-3 rounded-full ${
-                    i < buffer.length
+                    i < pin.length
                       ? "bg-[var(--accent)]"
                       : "bg-[var(--border)]"
                   }`}
