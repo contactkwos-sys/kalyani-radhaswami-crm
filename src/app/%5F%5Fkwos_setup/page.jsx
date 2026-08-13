@@ -9,11 +9,11 @@
 import { useState } from "react";
 
 const DEFAULT_ROWS = [
-  { loginSlug: "admin",        displayName: "Admin",             role: "admin",      tempPin: "1234" },
-  { loginSlug: "ceo-kailash",  displayName: "Kailash Kalyani",    role: "ceo",        tempPin: "2345" },
-  { loginSlug: "accountant",   displayName: "Bharat Bhai",        role: "accountant", tempPin: "3456" },
-  { loginSlug: "salesman-1",   displayName: "Salesman 01",        role: "salesman",   tempPin: "4567" },
-  { loginSlug: "salesman-2",   displayName: "Salesman 02",        role: "salesman",   tempPin: "5678" },
+  { loginSlug: "admin",       displayName: "Admin",       role: "admin",      tempPin: "" },
+  { loginSlug: "ceo",         displayName: "CEO",         role: "ceo",        tempPin: "" },
+  { loginSlug: "accountant",  displayName: "Accountant",  role: "accountant", tempPin: "" },
+  { loginSlug: "salesman_01", displayName: "Salesman 01", role: "salesman",   tempPin: "" },
+  { loginSlug: "salesman_02", displayName: "Salesman 02", role: "salesman",   tempPin: "" },
 ];
 
 export default function SetupWizard() {
@@ -21,6 +21,7 @@ export default function SetupWizard() {
   const [unlocked, setUnlocked] = useState(false);
   const [rows, setRows] = useState(DEFAULT_ROWS);
   const [results, setResults] = useState({}); // loginSlug -> 'ok' | 'error' | 'pending'
+  const [issuedPins, setIssuedPins] = useState({}); // loginSlug -> temporary PIN (shown once)
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -67,22 +68,32 @@ export default function SetupWizard() {
   const createAll = async () => {
     setRunning(true);
     const nextResults = {};
+    const nextPins = {};
     try {
       for (const row of rows) {
         nextResults[row.loginSlug] = "pending";
         setResults({ ...nextResults });
         try {
+          const payload = {
+            ...row,
+            // CEO public tile label only — person name belongs in DB profile later.
+            displayName: row.role === "ceo" ? "CEO" : row.displayName,
+          };
           const res = await fetch("/api/admin-create-user", {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-dev-key": devKey },
-            body: JSON.stringify(row),
+            body: JSON.stringify(payload),
           });
           const data = await res.json();
           nextResults[row.loginSlug] = res.ok ? "ok" : `error: ${data.error || "unknown"}`;
+          if (res.ok && data.temporaryPin) {
+            nextPins[row.loginSlug] = data.temporaryPin;
+          }
         } catch (e) {
           nextResults[row.loginSlug] = `error: ${e.message}`;
         }
         setResults({ ...nextResults });
+        setIssuedPins({ ...nextPins });
       }
       setDone(true);
     } finally {
@@ -117,7 +128,7 @@ export default function SetupWizard() {
       <div style={{ maxWidth: 640, margin: "0 auto" }}>
         <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Create your 5 users</h1>
         <p style={{ fontSize: 13, color: "#666", marginBottom: 20 }}>
-          Edit names/PINs if you like, or leave the defaults. Click Create — everything (login account + role) gets set up in one go.
+          CEO tile must say &quot;CEO&quot; (not a personal name). Leave Temp PIN blank to auto-generate a secure PIN.
         </p>
 
         {rows.map((row, i) => (
@@ -128,8 +139,8 @@ export default function SetupWizard() {
               style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}>
               {["admin", "ceo", "accountant", "salesman"].map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
-            <input value={row.tempPin} maxLength={4} onChange={(e) => /^\d{0,4}$/.test(e.target.value) && updateRow(i, "tempPin", e.target.value)}
-              placeholder="Temp PIN" style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }} />
+            <input value={row.tempPin} maxLength={8} onChange={(e) => /^\d{0,8}$/.test(e.target.value) && updateRow(i, "tempPin", e.target.value)}
+              placeholder="Auto PIN" style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }} />
             <span style={{ fontSize: 12, textAlign: "center", fontWeight: 700, color: results[row.loginSlug] === "ok" ? "#3e7c63" : results[row.loginSlug]?.startsWith("error") ? "#b5502e" : "#999" }}>
               {results[row.loginSlug] === "ok" ? "✓ Done" : results[row.loginSlug] === "pending" ? "…" : results[row.loginSlug]?.startsWith("error") ? "Failed" : ""}
             </span>
@@ -143,15 +154,15 @@ export default function SetupWizard() {
 
         {done && (
           <div style={{ marginTop: 24, padding: 16, background: "#fff", borderRadius: 12, border: "1px solid #e4dac4" }}>
-            <p style={{ fontWeight: 700, marginBottom: 8 }}>Save these temporary PINs — share one with each person:</p>
+            <p style={{ fontWeight: 700, marginBottom: 8 }}>Save these temporary PINs — shown once:</p>
             {rows.map((r) => (
               <p key={r.loginSlug} style={{ fontSize: 13, margin: "4px 0" }}>
-                <b>{r.displayName}</b> ({r.role}) — temp PIN: <code>{r.tempPin}</code>
+                <b>{r.role === "ceo" ? "CEO" : r.displayName}</b> ({r.role}) — temp PIN:{" "}
+                <code>{issuedPins[r.loginSlug] || r.tempPin || "(see server)"}</code>
               </p>
             ))}
             <p style={{ fontSize: 12, color: "#999", marginTop: 10 }}>
-              Everyone will be asked to set their own permanent PIN the first time they log in.
-              You can delete this page&apos;s route once done, or leave it — it&apos;s hidden and key-protected.
+              This page is hidden and key-protected. Never put Developer credentials on the public login screen.
             </p>
           </div>
         )}

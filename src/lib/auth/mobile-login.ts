@@ -279,23 +279,13 @@ export async function tryRestoreTrustedDeviceSession(): Promise<boolean> {
     return false;
   }
 
-  // Must still have a PIN login row
-  const { data: login } = await admin
-    .from("crm_user_login")
-    .select("user_id")
-    .eq("user_id", profile.id)
-    .maybeSingle();
-  if (!login) {
-    await clearDeviceCookie();
-    return false;
-  }
-
   try {
     await establishSupabaseSession(profile.email);
     await admin
       .from("crm_auth_devices")
       .update({ last_seen_at: new Date().toISOString() })
       .eq("id", device.id);
+    // Best-effort last_login update when mobile PIN row exists.
     await admin
       .from("crm_user_login")
       .update({ last_login_at: new Date().toISOString() })
@@ -456,6 +446,21 @@ export async function adminSetUserPin(input: {
   }
 
   await admin.from("crm_profiles").update({ mobile }).eq("id", input.userId);
+
+  // Keep role-tile Auth password in sync when a login tile exists.
+  try {
+    const { syncTilePinCredentials } = await import(
+      "@/lib/auth/role-login-server"
+    );
+    await syncTilePinCredentials({ userId: input.userId, pin: input.newPin });
+    await admin
+      .from("app_users")
+      .update({ pin_is_set: true, updated_at: new Date().toISOString() })
+      .eq("id", input.userId);
+  } catch {
+    // Tile sync is best-effort for mobile-only accounts.
+  }
+
   await revokeAllDevicesAndSessions(input.userId, input.adminId, "ADMIN_PIN_RESET");
   await audit(input.adminId, "ADMIN_PIN_RESET", { target_user: input.userId });
   return { ok: true };

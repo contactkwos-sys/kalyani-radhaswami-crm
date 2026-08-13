@@ -23,12 +23,20 @@ import {
   defaultModulesForRole,
   sanitizeModules,
 } from "@/lib/auth/modules";
+import {
+  defaultPermissionsForRole,
+  loginRoleFromAppRole,
+  publicTileLabelForRole,
+  sanitizePermissions,
+} from "@/lib/auth/permissions";
+import { roleSubtitleForLoginRole } from "@/lib/auth/pin-auth-shared";
 
 const MANAGEABLE_ROLES: AppRole[] = [
   "OWNER",
   "CEO_1",
   "CEO_2",
   "CEO_3",
+  "CEO_4",
   "ADMIN",
   "SALES_MANAGER",
   "SALESMAN",
@@ -83,6 +91,9 @@ export async function createCrmUser(input: {
   companyScope?: CompanyScope;
   department?: string;
   allowedModules?: string[] | null;
+  allowedPermissions?: string[] | null;
+  /** Show on public login tile list (default true for business roles). */
+  showOnLogin?: boolean;
   isActive?: boolean;
   temporaryPassword?: string;
 }): Promise<
@@ -145,10 +156,40 @@ export async function createCrmUser(input: {
 
   const modules =
     sanitizeModules(input.allowedModules) || defaultModulesForRole(input.role);
+  const permissions =
+    sanitizePermissions(input.allowedPermissions) ||
+    defaultPermissionsForRole(input.role);
 
+  const loginRole = loginRoleFromAppRole(input.role);
+  const tileLabel = publicTileLabelForRole(input.role);
+  // For CEOs: public tile shows role label; real person name stays in profile.
+  const publicDisplayName =
+    loginRole === "ceo" ? tileLabel : input.fullName.trim() || tileLabel;
+
+  const baseSlug = publicDisplayName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "")
+    .slice(0, 40);
+  let loginSlug = baseSlug || loginRole;
+  // Ensure unique slug for app_users
+  for (let i = 0; i < 20; i += 1) {
+    const candidate = i === 0 ? loginSlug : `${loginSlug}_${i + 1}`;
+    const { data: clash } = await admin
+      .from("app_users")
+      .select("id")
+      .eq("login_slug", candidate)
+      .maybeSingle();
+    if (!clash) {
+      loginSlug = candidate;
+      break;
+    }
+  }
+
+  const { deriveAuthPassword } = await import("@/lib/auth/pin-auth-server");
   const password =
     input.temporaryPassword ||
-    `Tmp!${Math.random().toString(36).slice(2)}${Date.now().toString(36)}A1`;
+    deriveAuthPassword(loginSlug, plainPin!);
 
   const { data, error } = await admin.auth.admin.createUser({
     email,
@@ -179,6 +220,7 @@ export async function createCrmUser(input: {
     company_scope: input.companyScope || "KALYANI",
     department: (input.department || "").trim() || null,
     allowed_modules: modules,
+    allowed_permissions: permissions,
     is_primary_owner: false,
     is_developer: false,
   });
@@ -187,7 +229,7 @@ export async function createCrmUser(input: {
     return { ok: false, error: profileErr.message };
   }
 
-  const pin_hash = await hashPin(plainPin);
+  const pin_hash = await hashPin(plainPin!);
   const { error: loginErr } = await admin.from("crm_user_login").upsert({
     user_id: userId,
     mobile_number: mobile,
@@ -209,6 +251,50 @@ export async function createCrmUser(input: {
       false
     );
     return { ok: false, error: loginErr.message };
+  }
+
+  // Create public login tile so Admin-created users appear on /login.
+  if (input.showOnLogin !== false) {
+    const sortOrder =
+      loginRole === "admin"
+        ? 10
+        : loginRole === "ceo"
+          ? 20
+          : loginRole === "accountant"
+            ? 30
+            : loginRole === "salesman"
+              ? 40
+              : 50;
+    const { error: tileErr } = await admin.from("app_users").upsert({
+      id: userId,
+      login_slug: loginSlug,
+      display_name: publicDisplayName,
+      role: loginRole,
+      role_subtitle: roleSubtitleForLoginRole(loginRole),
+      pin_is_set: false,
+      is_active: isActive,
+      sort_order: sortOrder,
+    });
+    if (tileErr) {
+      // Non-fatal if role_subtitle / 'other' role missing pre-migration — retry without extras.
+      const legacyRole =
+        loginRole === "other" || loginRole === "ceo"
+          ? loginRole === "other"
+            ? null
+            : "ceo"
+          : loginRole;
+      if (legacyRole) {
+        await admin.from("app_users").upsert({
+          id: userId,
+          login_slug: loginSlug,
+          display_name: publicDisplayName,
+          role: legacyRole,
+          pin_is_set: false,
+          is_active: isActive,
+          sort_order: sortOrder,
+        });
+      }
+    }
   }
 
   const { data: companies } = await admin.from("crm_companies").select("id, code");

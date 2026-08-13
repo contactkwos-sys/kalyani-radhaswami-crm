@@ -41,9 +41,9 @@ export default async function UsersManagementPage() {
             Users
           </h2>
           <p className="mt-1 text-sm text-[var(--muted)]">
-            Create and configure business users with role-tile + PIN login,
-            departments, and allowed modules. PIN values are never shown after
-            save.
+            Create users with mobile + hashed PIN, login tiles, departments,
+            permissions, and single-use invite links. PIN values are never
+            stored or shown after save.
           </p>
         </div>
         <div className="flex flex-wrap gap-3 text-sm">

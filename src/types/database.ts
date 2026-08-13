@@ -5,6 +5,7 @@ export type AppRole =
   | "CEO_1"
   | "CEO_2"
   | "CEO_3"
+  | "CEO_4"
   | "ADMIN"
   | "SALES_MANAGER"
   | "SALESMAN"
@@ -61,6 +62,8 @@ export interface Profile {
   department?: string | null;
   /** Optional explicit module allow-list; null = role defaults. */
   allowed_modules?: string[] | null;
+  /** Optional fine-grained permission keys; null = role defaults. */
+  allowed_permissions?: string[] | null;
   /** Protected primary Owner — cannot be deleted/demoted via normal UI. */
   is_primary_owner?: boolean;
   /** Owner/Developer flag for elevated override operations. */
@@ -176,6 +179,15 @@ export const ROLE_PERMISSIONS: Record<
     canOverride: false,
     readOnly: false,
   },
+  CEO_4: {
+    label: "CEO 4",
+    canManageMasters: true,
+    canEnterSales: true,
+    canManageUsers: true,
+    canViewAll: true,
+    canOverride: false,
+    readOnly: false,
+  },
   ADMIN: {
     label: "Admin",
     canManageMasters: true,
@@ -213,7 +225,7 @@ export const ROLE_PERMISSIONS: Record<
     readOnly: false,
   },
   VIEWER: {
-    label: "Viewer",
+    label: "Other Authorized User",
     canManageMasters: false,
     canEnterSales: false,
     canManageUsers: false,

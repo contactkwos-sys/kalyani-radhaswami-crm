@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   listActiveUsers,
   loginWithPin,
   completeFirstLogin,
-  getMyRole,
   ROLE_HOME,
+  roleSubtitleForLoginRole,
   type ActiveUserTile,
 } from "@/lib/auth/auth-lib";
 
@@ -138,6 +139,55 @@ function AuthShell({ children, maxWidth = 380 }: { children: React.ReactNode; ma
   );
 }
 
+function tileTitle(u: ActiveUserTile): string {
+  if (u.role === "ceo") {
+    // Never show personal CEO names on the public login screen.
+    if (
+      u.display_name.toLowerCase().includes("kailash") ||
+      u.display_name.startsWith("CEO (")
+    ) {
+      return "CEO";
+    }
+  }
+  return u.display_name;
+}
+
+function tileSubtitle(u: ActiveUserTile): string {
+  if (u.role === "ceo") return "Chief Executive / Management";
+  return u.role_subtitle || roleSubtitleForLoginRole(u.role);
+}
+
+function RememberToggle({
+  remember,
+  onChange,
+}: {
+  remember: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <label
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        justifyContent: "center",
+        marginTop: 14,
+        color: C.muted,
+        fontSize: 13,
+        fontWeight: 600,
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={remember}
+        onChange={(e) => onChange(e.target.checked)}
+        style={{ width: 16, height: 16, accentColor: C.accent }}
+      />
+      Remember this device
+    </label>
+  );
+}
+
 export default function RoleLoginPage() {
   const router = useRouter();
   const [users, setUsers] = useState<ActiveUserTile[]>([]);
@@ -145,27 +195,50 @@ export default function RoleLoginPage() {
   const [selected, setSelected] = useState<ActiveUserTile | null>(null);
   const [mode, setMode] = useState<"pin" | "setpin">("pin");
   const [pin, setPin] = useState("");
+  const [remember, setRemember] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showMobile, setShowMobile] = useState(false);
+  const [mobile, setMobile] = useState("");
+  const [mobilePin, setMobilePin] = useState("");
 
   const pinRef = useRef("");
   const lastDigitAt = useRef(0);
   const selectedRef = useRef<ActiveUserTile | null>(null);
   const submitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rememberRef = useRef(true);
 
   useEffect(() => {
     selectedRef.current = selected;
   }, [selected]);
 
   useEffect(() => {
+    rememberRef.current = remember;
+  }, [remember]);
+
+  useEffect(() => {
+    // Attempt silent restore from trusted device cookie (never stores PIN).
+    void fetch("/api/auth/device-restore?format=json", {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      credentials: "same-origin",
+    })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = await res.json().catch(() => ({}));
+        if (data.ok) router.replace(data.home || "/dashboard");
+      })
+      .catch(() => {
+        /* stay on login */
+      });
+
     listActiveUsers()
       .then((data) => setUsers(data))
       .catch((err) => {
-        console.log(err);
         setError(`Could not load users: ${err.message || JSON.stringify(err)}`);
       })
       .finally(() => setLoadingUsers(false));
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     return () => {
@@ -190,13 +263,8 @@ export default function RoleLoginPage() {
     setError("");
   };
 
-  const goToRoleHome = async () => {
-    try {
-      const role = await getMyRole();
-      router.replace(ROLE_HOME[role] || "/dashboard");
-    } catch {
-      router.replace("/dashboard");
-    }
+  const goHome = (home?: string) => {
+    router.replace(home || "/dashboard");
   };
 
   const guardDigit = () => {
@@ -215,8 +283,8 @@ export default function RoleLoginPage() {
     setBusy(true);
     setError("");
     try {
-      await loginWithPin(user.login_slug, nextPin);
-      await goToRoleHome();
+      const data = await loginWithPin(user.login_slug, nextPin, rememberRef.current);
+      goHome(data.home || ROLE_HOME[user.role] || "/dashboard");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Incorrect PIN.");
       pinRef.current = "";
@@ -236,8 +304,12 @@ export default function RoleLoginPage() {
     setBusy(true);
     setError("");
     try {
-      await completeFirstLogin(user.login_slug, nextPin);
-      await goToRoleHome();
+      const data = await completeFirstLogin(
+        user.login_slug,
+        nextPin,
+        rememberRef.current
+      );
+      goHome(data.home || ROLE_HOME[user.role] || "/dashboard");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not sign in.");
       pinRef.current = "";
@@ -254,6 +326,148 @@ export default function RoleLoginPage() {
       void submitFirstPin(nextPin);
     }, 250);
   };
+
+  const submitMobileLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch("/api/auth/mobile-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mobile,
+          pin: mobilePin,
+          remember,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Invalid mobile number or PIN.");
+      if (data.mustChangePin) {
+        router.replace("/settings/account?forced=1");
+      } else {
+        goHome(data.home || "/dashboard");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to sign in.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (showMobile) {
+    return (
+      <AuthShell maxWidth={360}>
+        <button
+          type="button"
+          onClick={() => {
+            setShowMobile(false);
+            setError("");
+          }}
+          style={{
+            color: C.accentDark,
+            fontSize: 14,
+            marginBottom: 16,
+            fontWeight: 700,
+            background: "none",
+            border: "none",
+            padding: 0,
+          }}
+        >
+          ← Back to users
+        </button>
+        <div style={{ textAlign: "center", marginBottom: 18 }}>
+          <h1
+            style={{
+              color: C.ink,
+              fontSize: 24,
+              fontWeight: 800,
+              margin: 0,
+              fontFamily: "var(--font-display), Georgia, serif",
+            }}
+          >
+            Kalyani · Radhaswami
+          </h1>
+          <p style={{ color: C.muted, fontSize: 14, marginTop: 8, fontWeight: 600 }}>
+            Sign in with mobile number + PIN
+          </p>
+        </div>
+        <form onSubmit={submitMobileLogin}>
+          <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: C.ink }}>
+            Mobile Number
+            <input
+              type="tel"
+              inputMode="numeric"
+              required
+              value={mobile}
+              onChange={(e) => setMobile(e.target.value)}
+              placeholder="10-digit mobile number"
+              style={{
+                width: "100%",
+                marginTop: 6,
+                marginBottom: 12,
+                padding: "12px 14px",
+                borderRadius: 12,
+                border: `2px solid ${C.border}`,
+                fontSize: 16,
+              }}
+            />
+          </label>
+          <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: C.ink }}>
+            PIN
+            <input
+              type="password"
+              inputMode="numeric"
+              required
+              maxLength={8}
+              value={mobilePin}
+              onChange={(e) =>
+                setMobilePin(e.target.value.replace(/\D/g, "").slice(0, 8))
+              }
+              placeholder="• • • •"
+              style={{
+                width: "100%",
+                marginTop: 6,
+                padding: "12px 14px",
+                borderRadius: 12,
+                border: `2px solid ${C.border}`,
+                fontSize: 16,
+                letterSpacing: "0.3em",
+              }}
+            />
+          </label>
+          <RememberToggle remember={remember} onChange={setRemember} />
+          {error && (
+            <p style={{ color: C.danger, fontSize: 14, fontWeight: 700, marginTop: 10 }}>
+              {error}
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={busy || mobilePin.length < 4}
+            style={{
+              width: "100%",
+              marginTop: 16,
+              padding: 15,
+              borderRadius: 12,
+              background: busy ? C.ctaDisabled : C.cta,
+              color: busy ? C.ctaDisabledText : C.ctaText,
+              fontWeight: 800,
+              fontSize: 15,
+              border: "none",
+            }}
+          >
+            {busy ? "Signing in…" : "Login"}
+          </button>
+        </form>
+        <p style={{ textAlign: "center", marginTop: 14, fontSize: 13, fontWeight: 600 }}>
+          <Link href="/forgot-pin" style={{ color: C.brand, fontWeight: 800 }}>
+            Forgot PIN
+          </Link>
+        </p>
+      </AuthShell>
+    );
+  }
 
   if (!selected) {
     return (
@@ -303,61 +517,64 @@ export default function RoleLoginPage() {
           </p>
         )}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {users.map((u) => (
-            <button
-              key={u.id}
-              type="button"
-              onClick={() => pickUser(u)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                padding: "14px 16px",
-                borderRadius: 16,
-                background: C.tileBg,
-                border: `2px solid ${C.border}`,
-                textAlign: "left",
-                color: C.ink,
-              }}
-            >
-              <div
+          {users.map((u) => {
+            const title = tileTitle(u);
+            const subtitle = tileSubtitle(u);
+            return (
+              <button
+                key={u.id}
+                type="button"
+                onClick={() => pickUser(u)}
                 style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: "50%",
-                  flexShrink: 0,
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "center",
-                  background: C.brand,
-                  color: "#fff",
-                  fontWeight: 800,
-                  fontSize: 14,
+                  gap: 12,
+                  padding: "14px 16px",
+                  borderRadius: 16,
+                  background: C.tileBg,
+                  border: `2px solid ${C.border}`,
+                  textAlign: "left",
+                  color: C.ink,
                 }}
               >
-                {u.display_name
-                  .split(" ")
-                  .map((w) => w[0])
-                  .slice(0, 2)
-                  .join("")
-                  .toUpperCase()}
-              </div>
-              <div>
-                <p style={{ fontWeight: 800, fontSize: 16, margin: 0 }}>{u.display_name}</p>
-                <p
+                <div
                   style={{
-                    fontSize: 13,
-                    color: C.accentDark,
-                    textTransform: "capitalize",
-                    fontWeight: 700,
-                    margin: "2px 0 0",
+                    width: 44,
+                    height: 44,
+                    borderRadius: "50%",
+                    flexShrink: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: C.brand,
+                    color: "#fff",
+                    fontWeight: 800,
+                    fontSize: 14,
                   }}
                 >
-                  {u.role}
-                </p>
-              </div>
-            </button>
-          ))}
+                  {title
+                    .split(" ")
+                    .map((w) => w[0])
+                    .slice(0, 2)
+                    .join("")
+                    .toUpperCase()}
+                </div>
+                <div>
+                  <p style={{ fontWeight: 800, fontSize: 16, margin: 0 }}>{title}</p>
+                  <p
+                    style={{
+                      fontSize: 13,
+                      color: C.accentDark,
+                      fontWeight: 700,
+                      margin: "2px 0 0",
+                    }}
+                  >
+                    {subtitle}
+                  </p>
+                </div>
+              </button>
+            );
+          })}
         </div>
         <p
           style={{
@@ -370,6 +587,26 @@ export default function RoleLoginPage() {
         >
           No OTP · PIN login only
         </p>
+        <button
+          type="button"
+          onClick={() => {
+            setShowMobile(true);
+            setError("");
+          }}
+          style={{
+            display: "block",
+            width: "100%",
+            marginTop: 10,
+            background: "none",
+            border: "none",
+            color: C.accentDark,
+            fontWeight: 800,
+            fontSize: 13,
+            cursor: "pointer",
+          }}
+        >
+          Sign in with mobile number
+        </button>
       </AuthShell>
     );
   }
@@ -396,7 +633,7 @@ export default function RoleLoginPage() {
         </button>
         <div style={{ textAlign: "center" }}>
           <p style={{ color: C.ink, fontWeight: 800, fontSize: 18, margin: 0 }}>
-            {selected.display_name}
+            {tileTitle(selected)}
           </p>
           <p style={{ color: C.muted, fontSize: 14, marginBottom: 8, fontWeight: 600 }}>
             First-time login
@@ -428,6 +665,7 @@ export default function RoleLoginPage() {
               setPin(next);
             }}
           />
+          <RememberToggle remember={remember} onChange={setRemember} />
           <button
             type="button"
             disabled={!canSave}
@@ -479,17 +717,16 @@ export default function RoleLoginPage() {
       </button>
       <div style={{ textAlign: "center" }}>
         <p style={{ color: C.ink, fontWeight: 800, fontSize: 18, margin: 0 }}>
-          {selected.display_name}
+          {tileTitle(selected)}
         </p>
         <p
           style={{
             color: C.accentDark,
             fontSize: 14,
-            textTransform: "capitalize",
             fontWeight: 700,
           }}
         >
-          {selected.role}
+          {tileSubtitle(selected)}
         </p>
         <p style={{ color: C.muted, fontSize: 15, marginTop: 14, fontWeight: 700 }}>
           Enter PIN
@@ -510,9 +747,12 @@ export default function RoleLoginPage() {
             setPin(next);
           }}
         />
+        <RememberToggle remember={remember} onChange={setRemember} />
         <p style={{ color: C.muted, fontSize: 13, marginTop: 20, fontWeight: 600 }}>
           Forgot PIN?{" "}
-          <span style={{ color: C.brand, fontWeight: 800 }}>Contact Admin</span>
+          <Link href="/forgot-pin" style={{ color: C.brand, fontWeight: 800 }}>
+            Contact Admin
+          </Link>
         </p>
       </div>
     </AuthShell>

@@ -6,6 +6,7 @@ export const ROLE_RANK: Record<AppRole, number> = {
   CEO_1: 90,
   CEO_2: 80,
   CEO_3: 70,
+  CEO_4: 65,
   ADMIN: 60,
   SALES_MANAGER: 40,
   ACCOUNTANT: 30,
@@ -13,13 +14,14 @@ export const ROLE_RANK: Record<AppRole, number> = {
   VIEWER: 10,
 };
 
-export const CEO_ROLES: AppRole[] = ["CEO_1", "CEO_2", "CEO_3"];
+export const CEO_ROLES: AppRole[] = ["CEO_1", "CEO_2", "CEO_3", "CEO_4"];
 
 export const EXECUTIVE_ROLES: AppRole[] = [
   "OWNER",
   "CEO_1",
   "CEO_2",
   "CEO_3",
+  "CEO_4",
   "ADMIN",
 ];
 

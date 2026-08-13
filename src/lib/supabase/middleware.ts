@@ -29,7 +29,9 @@ export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const isAuthRoute =
     pathname.startsWith("/login") ||
-    pathname.startsWith("/auth");
+    pathname.startsWith("/auth") ||
+    pathname.startsWith("/forgot-pin") ||
+    pathname.startsWith("/invite/");
   const isDevConsole =
     pathname.startsWith("/__kwos_dev_console") ||
     pathname.startsWith("/__kwos_setup") ||
@@ -70,11 +72,9 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Forgot-PIN / mobile OTP flows removed.
-  if (pathname.startsWith("/forgot-pin") || pathname.startsWith("/api/auth/mobile-login")) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    return NextResponse.redirect(url);
+  // Public invite acceptance (token in path; no session required).
+  if (pathname.startsWith("/invite/")) {
+    return supabaseResponse;
   }
 
   return supabaseResponse;

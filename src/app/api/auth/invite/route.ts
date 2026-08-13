@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { loginWithRolePin } from "@/lib/auth/role-login-server";
+import { consumeInvite } from "@/lib/auth/invites";
 
 const schema = z.object({
-  loginSlug: z.string().min(1).max(64),
-  pin: z.string().min(4).max(8),
+  token: z.string().min(20).max(200),
+  pin: z.string().regex(/^\d{4,8}$/),
   remember: z.boolean().optional(),
-  firstLogin: z.boolean().optional(),
 });
 
 export async function POST(request: Request) {
@@ -14,7 +13,7 @@ export async function POST(request: Request) {
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Select a user and enter a valid PIN." },
+        { error: "Enter the temporary PIN from your Admin." },
         { status: 400 }
       );
     }
@@ -24,26 +23,24 @@ export async function POST(request: Request) {
       null;
     const userAgent = request.headers.get("user-agent");
 
-    const result = await loginWithRolePin({
-      loginSlug: parsed.data.loginSlug,
+    const result = await consumeInvite({
+      token: parsed.data.token,
       pin: parsed.data.pin,
       remember: Boolean(parsed.data.remember),
-      firstLogin: Boolean(parsed.data.firstLogin),
       userAgent,
       ipAddress,
     });
-
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: 401 });
     }
     return NextResponse.json({
       ok: true,
-      role: result.role,
-      home: result.home,
+      home: "/dashboard",
+      mustChangePin: result.mustChangePin,
     });
   } catch (e) {
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Unable to sign in." },
+      { error: e instanceof Error ? e.message : "Unable to accept invite." },
       { status: 500 }
     );
   }

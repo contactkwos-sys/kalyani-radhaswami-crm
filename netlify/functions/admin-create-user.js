@@ -1,19 +1,42 @@
 /**
- * ============================================================================
- * 10_admin_create_user.js
  * Netlify function: api/admin-create-user.js
- * Creates the Supabase Auth user AND the app_users row IN ONE CALL — this
- * is what makes the setup wizard possible with zero UUID copy-paste.
- * Protected by DEV_OVERRIDE_KEY so only the setup wizard (or you) can call it.
- * ============================================================================
- *
- * Env: DEV_OVERRIDE_KEY, SUPABASE_SERVICE_ROLE_KEY,
- *      NEXT_PUBLIC_SUPABASE_URL | SUPABASE_URL
- * Auth: header `x-dev-key` must equal DEV_OVERRIDE_KEY.
+ * Protected by DEV_OVERRIDE_KEY (timing-safe). Server-side pepper only.
  */
 const { createClient } = require("@supabase/supabase-js");
+const { timingSafeEqual, randomInt, createHash } = require("crypto");
+const bcrypt = require("bcryptjs");
 
-const PEPPER = "kwos-kalyani-radhaswami-2026"; // must match the one in auth lib
+function getPepper() {
+  return (
+    process.env.AUTH_PIN_PEPPER ||
+    process.env.TILE_AUTH_PEPPER ||
+    "kwos-kalyani-radhaswami-2026"
+  );
+}
+
+function deriveAuthPassword(loginSlug, pin) {
+  return `${pin}-${loginSlug}-${getPepper()}`;
+}
+
+function safeEqual(a, b) {
+  try {
+    const ab = Buffer.from(String(a || ""), "utf8");
+    const bb = Buffer.from(String(b || ""), "utf8");
+    if (ab.length !== bb.length) {
+      timingSafeEqual(ab, ab);
+      return false;
+    }
+    return timingSafeEqual(ab, bb);
+  } catch {
+    return false;
+  }
+}
+
+function generateTempPin() {
+  let pin = "";
+  for (let i = 0; i < 6; i += 1) pin += String(randomInt(0, 10));
+  return pin;
+}
 
 exports.handler = async (event) => {
   if (event.httpMethod !== "POST") {
@@ -28,8 +51,8 @@ exports.handler = async (event) => {
       headers["X-DEV-KEY"] ||
       "";
     const expected =
-      process.env.DEV_OVERRIDE_KEY || process.env.DEVELOPER_OVERRIDE_KEY;
-    if (!key || !expected || key !== expected) {
+      process.env.DEV_OVERRIDE_KEY || process.env.DEVELOPER_OVERRIDE_KEY || "";
+    if (!key || !expected || !safeEqual(key, expected)) {
       return {
         statusCode: 401,
         headers: { "Content-Type": "application/json" },
@@ -37,16 +60,31 @@ exports.handler = async (event) => {
       };
     }
 
-    const { loginSlug, displayName, role, tempPin } = JSON.parse(
-      event.body || "{}"
-    );
-    if (!loginSlug || !displayName || !role || !/^\d{4}$/.test(tempPin || "")) {
+    const body = JSON.parse(event.body || "{}");
+    let { loginSlug, displayName, role, tempPin } = body;
+    loginSlug = String(loginSlug || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_]/g, "");
+    role = String(role || "").trim().toLowerCase();
+    displayName = String(displayName || "").trim();
+    if (role === "ceo") {
+      if (
+        displayName.toLowerCase().includes("kailash") ||
+        displayName.startsWith("CEO (")
+      ) {
+        displayName = "CEO";
+      }
+      displayName = displayName || "CEO";
+    }
+    if (!loginSlug || !displayName || !role) {
       return {
         statusCode: 400,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ error: "Missing or invalid fields" }),
       };
     }
+    if (!/^\d{4,8}$/.test(tempPin || "")) tempPin = generateTempPin();
 
     const url =
       process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "";
@@ -63,14 +101,22 @@ exports.handler = async (event) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    const password = `${tempPin}-${loginSlug}-${PEPPER}`;
+    const password = deriveAuthPassword(loginSlug, tempPin);
     const crmRoleByLogin = {
       admin: "ADMIN",
       ceo: "CEO_1",
       accountant: "ACCOUNTANT",
       salesman: "SALESMAN",
+      other: "VIEWER",
     };
     const crmRole = crmRoleByLogin[role] || "VIEWER";
+    const subtitles = {
+      admin: "System administrator",
+      ceo: "Chief Executive / Management",
+      accountant: "Accounts & entries",
+      salesman: "Field sales",
+      other: "Authorized user",
+    };
 
     const { data: authUser, error: authErr } =
       await supabaseAdmin.auth.admin.createUser({
@@ -92,16 +138,18 @@ exports.handler = async (event) => {
       };
     }
 
+    const id = authUser.user.id;
     const { error: rowErr } = await supabaseAdmin.from("app_users").insert({
-      id: authUser.user.id,
+      id,
       login_slug: loginSlug,
       display_name: displayName,
       role,
+      role_subtitle: subtitles[role] || null,
       pin_is_set: false,
+      is_active: true,
     });
     if (rowErr) {
-      // roll back the auth user so a retry doesn't collide
-      await supabaseAdmin.auth.admin.deleteUser(authUser.user.id);
+      await supabaseAdmin.auth.admin.deleteUser(id);
       return {
         statusCode: 400,
         headers: { "Content-Type": "application/json" },
@@ -111,19 +159,32 @@ exports.handler = async (event) => {
 
     await supabaseAdmin.from("crm_profiles").upsert(
       {
-        id: authUser.user.id,
+        id,
         email: `${loginSlug}@internal.kwos.local`,
         full_name: displayName,
         role: crmRole,
         is_active: true,
+        is_developer: false,
       },
       { onConflict: "id" }
     );
 
+    const pin_hash = await bcrypt.hash(tempPin, 12);
+    const placeholderMobile = `9${createHash("sha256")
+      .update(id)
+      .digest("hex")
+      .slice(0, 9)}`.slice(0, 10);
+    await supabaseAdmin.from("crm_user_login").upsert({
+      user_id: id,
+      mobile_number: placeholderMobile,
+      pin_hash,
+      must_change_pin: false,
+    });
+
     return {
       statusCode: 200,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ok: true, id: authUser.user.id }),
+      body: JSON.stringify({ ok: true, id, temporaryPin: tempPin }),
     };
   } catch (e) {
     return {
